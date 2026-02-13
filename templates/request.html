@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block title %}Request Access - Tailscale JIT Access{% endblock %}
+
+{% block content %}
+<h2>Request Temporary Access</h2>
+
+<form method="POST" id="requestForm" style="margin-bottom: 40px;">
+    <div class="form-group">
+        <label for="device_combo">Which of your devices needs access? *
+            <a href="#" id="deviceRefresh" style="font-size: 12px; margin-left: 10px; font-weight: 400;">Update</a>
+            <span id="deviceRefreshStatus" style="font-size:12px; margin-left:6px; color:#888; display:none;"></span>
+        </label>
+        <div class="combo-wrap" id="device_combo_wrap">
+            <input type="text" id="device_combo" class="combo-input" placeholder="Type to search your devices..." autocomplete="off">
+            <ul class="combo-list" id="device_list" role="listbox"></ul>
+        </div>
+        <input type="hidden" id="device_id" name="device_id">
+        <input type="hidden" id="device_name" name="device_name">
+    </div>
+
+    <div class="form-group">
+        <label for="profile_combo">What access level do you need? *</label>
+        <div class="combo-wrap" id="profile_combo_wrap">
+            <input type="text" id="profile_combo" class="combo-input" placeholder="Type to search access levels..." autocomplete="off">
+            <ul class="combo-list" id="profile_list" role="listbox"></ul>
+        </div>
+        <input type="hidden" id="attribute" name="attribute">
+    </div>
+
+    <div class="form-group" id="custom_attribute_group" style="display: none;">
+        <label for="custom_attribute">Custom Attribute (must start with 'custom:') *</label>
+        <input type="text" id="custom_attribute" placeholder="custom:myAttribute">
+    </div>
+
+    <div class="form-group">
+        <label for="duration">Duration (minutes) *</label>
+        <select id="duration" name="duration" required>
+            <option value="5">5 minutes</option>
+            <option value="15">15 minutes</option>
+            <option value="30">30 minutes</option>
+            <option value="60" selected>1 hour</option>
+            <option value="120">2 hours</option>
+            <option value="240">4 hours</option>
+            <option value="480">8 hours</option>
+            <option value="1440">24 hours</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="reason">Reason for Access *</label>
+        <textarea id="reason" name="reason" rows="4" placeholder="Describe why you need this access..." required></textarea>
+    </div>
+
+    <div id="form-error" style="display:none; color:#f44336; font-size:14px; margin-bottom:12px;"></div>
+
+    <div style="display: flex; gap: 1rem; margin-top: 20px;">
+        <button type="submit" class="btn-primary">Submit Request</button>
+        <a href="{{ url_for('index') }}" class="btn-secondary">Cancel</a>
+    </div>
+</form>
+
+<div style="background: #f9f9f9; padding: 20px; border-radius: 8px;">
+    <h2>How This Works</h2>
+    <ul style="padding-left: 1.5rem; line-height: 1.8; color: #555;">
+        <li>Approval is required before any access is granted</li>
+        <li>Once approved, the selected access level is applied to your chosen device via a Tailscale posture attribute</li>
+        <li>Access is automatically revoked from that device after the specified duration</li>
+        <li>Provide a clear, specific reason so approvers understand what you need</li>
+        <li>You'll receive a notification when your request is approved or denied</li>
+        <li>All requests are logged for audit purposes</li>
+    </ul>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.combo-wrap {
+    position: relative;
+}
+.combo-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    font-family: inherit;
+    background: white;
+    box-sizing: border-box;
+}
+.combo-input:focus {
+    outline: none;
+    border-color: #2196F3;
+    box-shadow: 0 0 0 3px rgba(33,150,243,0.1);
+}
+.combo-input.selected {
+    border-color: #4CAF50;
+    background: #f9fff9;
+}
+.combo-list {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #ddd;
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    max-height: 220px;
+    overflow-y: auto;
+    z-index: 100;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+.combo-list.open { display: block; }
+.combo-list li {
+    padding: 9px 12px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #333;
+    border-bottom: 1px solid #f5f5f5;
+}
+.combo-list li:last-child { border-bottom: none; }
+.combo-list li:hover,
+.combo-list li.active { background: #e3f2fd; }
+.combo-list li.no-match { color: #999; cursor: default; }
+.combo-list li em {
+    font-style: normal;
+    color: #999;
+    font-size: 12px;
+    margin-left: 6px;
+}
+</style>
+<script>
+(function() {
+    // Device data from server
+    // Exposed as window._jitDevices so the Update button can mutate it in place
+    window._jitDevices = [
+        {% for device in devices %}
+        {
+            id: {{ device.id | tojson }},
+            name: {{ device.hostname | tojson }},
+            label: {{ device.hostname | tojson }}{% if device.user or device.tags %} + ' (' + {{ (device.user if device.user else device.tags[0] if device.tags else '') | tojson }} + ')'{% endif %},
+            search: {{ (device.hostname + ' ' + (device.user or '') + ' ' + (device.tags | join(' '))) | lower | tojson }}
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
+
+    // Profile data from server
+    const profiles = [
+        {% for profile in profiles %}
+        {
+            id: {{ profile.id | tojson }},
+            label: {{ profile.name | tojson }},
+            search: {{ (profile.name + ' ' + profile.id) | lower | tojson }}
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+        ,{ id: 'custom', label: 'Custom attribute...', search: 'custom' }
+    ];
+
+    function makeCombo(inputId, listId, items, onSelect) {
+        const input = document.getElementById(inputId);
+        const list = document.getElementById(listId);
+        let activeIdx = -1;
+        let selectedValue = null;
+
+        function render(filter) {
+            const term = (filter || '').toLowerCase();
+            const filtered = term
+                ? items.filter(i => i.search.includes(term))
+                : items;
+
+            list.innerHTML = '';
+            activeIdx = -1;
+
+            if (filtered.length === 0) {
+                const li = document.createElement('li');
+                li.className = 'no-match';
+                li.textContent = 'No matches';
+                list.appendChild(li);
+            } else {
+                filtered.forEach((item, idx) => {
+                    const li = document.createElement('li');
+                    li.textContent = item.label;
+                    li.dataset.id = item.id;
+                    li.dataset.idx = idx;
+                    li.addEventListener('mousedown', function(e) {
+                        e.preventDefault();
+                        select(item);
+                    });
+                    list.appendChild(li);
+                });
+            }
+            list.classList.add('open');
+        }
+
+        function select(item) {
+            selectedValue = item.id;
+            input.value = item.label;
+            input.classList.add('selected');
+            list.classList.remove('open');
+            onSelect(item);
+        }
+
+        function clearSelection() {
+            selectedValue = null;
+            input.classList.remove('selected');
+            onSelect(null);
+        }
+
+        input.addEventListener('focus', function() {
+            render(this.value);
+        });
+
+        input.addEventListener('input', function() {
+            clearSelection();
+            render(this.value);
+        });
+
+        input.addEventListener('keydown', function(e) {
+            const items = list.querySelectorAll('li:not(.no-match)');
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                activeIdx = Math.min(activeIdx + 1, items.length - 1);
+                items.forEach((li, i) => li.classList.toggle('active', i === activeIdx));
+                if (items[activeIdx]) items[activeIdx].scrollIntoView({block:'nearest'});
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                activeIdx = Math.max(activeIdx - 1, 0);
+                items.forEach((li, i) => li.classList.toggle('active', i === activeIdx));
+                if (items[activeIdx]) items[activeIdx].scrollIntoView({block:'nearest'});
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (activeIdx >= 0 && items[activeIdx]) {
+                    items[activeIdx].dispatchEvent(new Event('mousedown'));
+                }
+            } else if (e.key === 'Escape') {
+                list.classList.remove('open');
+            }
+        });
+
+        input.addEventListener('blur', function() {
+            setTimeout(() => list.classList.remove('open'), 150);
+        });
+
+        return { getValue: () => selectedValue };
+    }
+
+    // Device combo
+    const deviceCombo = makeCombo('device_combo', 'device_list', window._jitDevices, function(item) {
+        document.getElementById('device_id').value = item ? item.id : '';
+        document.getElementById('device_name').value = item ? item.name : '';
+    });
+
+    // Profile combo
+    const profileCombo = makeCombo('profile_combo', 'profile_list', profiles, function(item) {
+        const customGroup = document.getElementById('custom_attribute_group');
+        const customInput = document.getElementById('custom_attribute');
+        if (item && item.id === 'custom') {
+            document.getElementById('attribute').value = '';
+            customGroup.style.display = 'block';
+            customInput.required = true;
+        } else {
+            document.getElementById('attribute').value = item ? item.id : '';
+            customGroup.style.display = 'none';
+            customInput.required = false;
+        }
+    });
+
+    // Device "Update" - fetches fresh device list from Tailscale without losing form state
+    document.getElementById('deviceRefresh').addEventListener('click', async function(e) {
+        e.preventDefault();
+        const status = document.getElementById('deviceRefreshStatus');
+        status.textContent = 'Refreshing...';
+        status.style.display = 'inline';
+        this.style.pointerEvents = 'none';
+        try {
+            const res = await fetch('/api/devices?refresh=1');
+            const data = await res.json();
+            if (res.ok && data.devices) {
+                // Rebuild the devices array and re-init the combo
+                window._jitDevices.length = 0;
+                data.devices.forEach(d => {
+                    const suffix = d.user || (d.tags && d.tags[0]) || '';
+                    window._jitDevices.push({
+                        id: d.id,
+                        name: d.hostname,
+                        label: suffix ? `${d.hostname} (${suffix})` : d.hostname,
+                        search: `${d.hostname} ${d.user || ''} ${(d.tags||[]).join(' ')}`.toLowerCase()
+                    });
+                });
+                status.textContent = `Updated (${window._jitDevices.length} devices)`;
+                status.style.color = '#27ae60';
+            } else {
+                status.textContent = 'Refresh failed';
+                status.style.color = '#e53935';
+            }
+        } catch(err) {
+            status.textContent = 'Network error';
+            status.style.color = '#e53935';
+        }
+        this.style.pointerEvents = '';
+        setTimeout(() => { status.style.display = 'none'; }, 3000);
+    });
+
+    // Form submit validation
+    document.getElementById('requestForm').addEventListener('submit', function(e) {
+        const errBox = document.getElementById('form-error');
+        errBox.style.display = 'none';
+
+        const deviceId = document.getElementById('device_id').value;
+        const deviceName = document.getElementById('device_name').value;
+        if (!deviceId || !deviceName) {
+            e.preventDefault();
+            errBox.textContent = 'Please select one of your devices from the list.';
+            errBox.style.display = 'block';
+            return;
+        }
+
+        const attrHidden = document.getElementById('attribute');
+        const customInput = document.getElementById('custom_attribute');
+        const customGroup = document.getElementById('custom_attribute_group');
+
+        if (customGroup.style.display !== 'none') {
+            if (!customInput.value.startsWith('custom:')) {
+                e.preventDefault();
+                errBox.textContent = 'Custom attribute must start with "custom:"';
+                errBox.style.display = 'block';
+                return;
+            }
+            attrHidden.value = customInput.value;
+        }
+
+        if (!attrHidden.value) {
+            e.preventDefault();
+            errBox.textContent = 'Please select an access level.';
+            errBox.style.display = 'block';
+        }
+    });
+})();
+</script>
+{% endblock %}

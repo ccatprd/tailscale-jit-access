@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}JIT Access Management{% endblock %}</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            color: #333;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .user-badge {
+            background: #4CAF50;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        nav {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        nav a {
+            color: #2196F3;
+            text-decoration: none;
+            margin-right: 20px;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        nav a:hover {
+            color: #1976D2;
+        }
+
+        nav a.active {
+            color: #1976D2;
+            border-bottom: 2px solid #1976D2;
+            padding-bottom: 4px;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #4CAF50;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 4px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            z-index: 1000;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background: #f5f5f5;
+            font-weight: 600;
+            color: #333;
+        }
+
+        tr:hover {
+            background: #f9f9f9;
+        }
+
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        button.approve {
+            background: #4CAF50;
+            color: white;
+        }
+
+        button.approve:hover {
+            background: #45a049;
+        }
+
+        button.deny {
+            background: #f44336;
+            color: white;
+        }
+
+        button.deny:hover {
+            background: #d32f2f;
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: inherit;
+            background: white;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #2196F3;
+            box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+        }
+
+        .btn-primary {
+            background: #2196F3;
+            color: white;
+            padding: 10px 24px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-primary:hover {
+            background: #1976D2;
+        }
+
+        .btn-secondary {
+            background: #757575;
+            color: white;
+            padding: 10px 24px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: background 0.2s;
+        }
+
+        .btn-secondary:hover {
+            background: #616161;
+        }
+
+        h2 {
+            margin-bottom: 20px;
+            color: #333;
+            font-size: 22px;
+        }
+
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>JIT Access Management</h1>
+        <div class="user-info">
+            <div class="user-badge">{{ current_user }}</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:#555;position:relative;" id="tzPickerWrap">
+                <label style="font-weight:500;white-space:nowrap;">Time zone:</label>
+                <div style="position:relative;">
+                    <button id="tzBtn" type="button" style="font-size:13px;padding:5px 10px;border:1px solid #ddd;border-radius:4px;background:white;cursor:pointer;min-width:180px;text-align:left;white-space:nowrap;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                        <span id="tzBtnLabel">UTC</span>
+                        <svg width="10" height="6" viewBox="0 0 10 6" fill="none" style="flex-shrink:0;opacity:0.5;"><path d="M1 1l4 4 4-4" stroke="#333" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    </button>
+                    <div id="tzPanel" style="display:none;position:absolute;right:0;top:calc(100% + 4px);width:300px;background:white;border:1px solid #ddd;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,0.12);z-index:1000;">
+                        <div style="padding:8px;border-bottom:1px solid #f0f0f0;position:relative;">
+                            <input id="tzSearch" type="text" placeholder="Search city or region..." autocomplete="off"
+                                style="width:100%;padding:7px 30px 7px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px;box-sizing:border-box;font-family:inherit;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" style="position:absolute;right:18px;top:50%;transform:translateY(-50%);pointer-events:none;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        </div>
+                        <ul id="tzList" style="list-style:none;margin:0;padding:0;max-height:240px;overflow-y:auto;"></ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <nav>
+        <a href="/" {% if request.path == '/' %}class="active"{% endif %}>Home</a>
+        <a href="/request" {% if request.path == '/request' %}class="active"{% endif %}>Request Access</a>
+        {% if can_view_current_access %}
+        <a href="/current-access" {% if request.path == '/current-access' %}class="active"{% endif %}>Current Access</a>
+        {% endif %}
+        {% if can_view_audit %}
+        <a href="/audit" {% if request.path == '/audit' %}class="active"{% endif %}>Audit Log</a>
+        <a href="/activity" {% if request.path == '/activity' %}class="active"{% endif %}>User Activity</a>
+        {% endif %}
+        {% if can_admin_config %}
+        <a href="/admin" {% if request.path == '/admin' %}class="active"{% endif %}>Admin</a>
+        {% endif %}
+        {% if can_view_debug %}
+        <a href="/debug" {% if request.path == '/debug' %}class="active"{% endif %}>Debug</a>
+        {% endif %}
+    </nav>
+
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+
+    <script>
+        const socket = io();
+
+        // Parse a timestamp treating naive strings (no tz info) as UTC
+        function parseUTC(ts) {
+            if (!ts) return null;
+            ts = ts.trim();
+            if (/Z$|[+-]\d{2}:?\d{2}$/.test(ts)) return new Date(ts);
+            return new Date(ts.replace(' ', 'T') + 'Z');
+        }
+
+        function timeAgo(timestamp) {
+            const now = new Date();
+            const then = parseUTC(timestamp);
+            if (!then) return '';
+            const diffMs = then - now;
+            const diffMins = Math.floor(diffMs / 60000);
+            if (diffMins < 0) return 'expired';
+            if (diffMins < 60) return `${diffMins} min from now`;
+            const diffHours = Math.floor(diffMins / 60);
+            if (diffHours < 24) return `${diffHours}h from now`;
+            const diffDays = Math.floor(diffHours / 24);
+            return `${diffDays}d from now`;
+        }
+
+        // Timezone preference - stored in sessionStorage so it's per-tab, not shared
+        const TZ_KEY = 'jit_tz';
+        function getActiveTZ() {
+            return sessionStorage.getItem(TZ_KEY) || 'UTC';
+        }
+
+        // Format a raw DB timestamp in the user's chosen timezone for this session
+        function formatUTC(ts) {
+            const d = parseUTC(ts);
+            if (!d) return ts;
+            const tz = getActiveTZ();
+            if (tz === 'UTC') {
+                return d.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+            }
+            try {
+                const parts = new Intl.DateTimeFormat('en-CA', {
+                    timeZone: tz,
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit', second: '2-digit',
+                    hour12: false
+                }).formatToParts(d);
+                const get = t => parts.find(p => p.type === t)?.value || '00';
+                const abbr = new Intl.DateTimeFormat('en-US', {timeZone: tz, timeZoneName: 'short'})
+                    .formatToParts(d).find(p => p.type === 'timeZoneName')?.value || tz;
+                return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')} ${abbr}`;
+            } catch(e) {
+                return d.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+            }
+        }
+
+        // City-based timezone list: [iana_key, "City, Country", search_terms]
+        // Sorted alphabetically by city name. UTC offset is computed live from Intl so DST is always correct.
+        const TZ_CITIES = [
+            ['Pacific/Pago_Pago',       'Apia, Samoa',                    'samoa pacific'],
+            ['America/Argentina/Buenos_Aires','Buenos Aires, Argentina',   'argentina south america'],
+            ['America/Chicago',          'Chicago, United States',         'us usa central time illinois'],
+            ['Asia/Dhaka',               'Dhaka, Bangladesh',              'bangladesh'],
+            ['Asia/Dubai',               'Dubai, United Arab Emirates',    'uae gulf'],
+            ['Europe/Dublin',            'Dublin, Ireland',                'ireland eire'],
+            ['Pacific/Honolulu',         'Honolulu, United States',        'hawaii us usa'],
+            ['Asia/Hong_Kong',           'Hong Kong',                      'hk china'],
+            ['Asia/Kolkata',             'India (Kolkata)',                 'india ist mumbai delhi'],
+            ['Asia/Jakarta',             'Jakarta, Indonesia',             'indonesia wib'],
+            ['America/Anchorage',        'Juneau / Anchorage, United States','alaska us usa'],
+            ['Africa/Nairobi',           'Nairobi, Kenya',                 'east africa eat'],
+            ['Asia/Karachi',             'Karachi, Pakistan',              'pakistan pst'],
+            ['Pacific/Auckland',         'Auckland, New Zealand',          'new zealand nzst nzdt'],
+            ['Europe/London',            'London, United Kingdom',         'uk england britain bst gmt'],
+            ['America/Los_Angeles',      'Los Angeles, United States',     'us usa pacific time california pst pdt'],
+            ['America/Santiago',          'Santiago, Chile',                'chile clst'],
+            ['America/Sao_Paulo',        'Sao Paulo, Brazil',              'brazil south america brt'],
+            ['Europe/Moscow',            'Moscow, Russia',                 'russia msk'],
+            ['America/Denver',           'Denver, United States',          'us usa mountain time mst mdt'],
+            ['America/New_York',         'New York, United States',        'us usa eastern time est edt nyc'],
+            ['Europe/Paris',             'Paris, France',                  'france cet cest'],
+            ['Asia/Riyadh',              'Riyadh, Saudi Arabia',           'saudi arabia ast'],
+            ['Europe/Bucharest',         'Bucharest, Romania',             'romania east europe'],
+            ['Asia/Singapore',           'Singapore',                      'sgt southeast asia'],
+            ['Asia/Seoul',               'Seoul, South Korea',             'korea kst'],
+            ['Europe/Stockholm',         'Stockholm, Sweden',              'sweden scandinavia'],
+            ['Asia/Bangkok',             'Bangkok, Thailand',              'thailand ict indochina'],
+            ['America/Toronto',          'Toronto, Canada',                'canada eastern ontario'],
+            ['Asia/Tokyo',               'Tokyo, Japan',                   'japan jst'],
+            ['UTC',                      'UTC',                            'utc universal coordinated gmt zulu'],
+            ['America/Vancouver',        'Vancouver, Canada',              'canada pacific british columbia'],
+            ['Europe/Warsaw',            'Warsaw, Poland',                 'poland cet'],
+            ['Australia/Sydney',         'Sydney, Australia',              'australia aest aedt nsw'],
+            ['Europe/Zurich',            'Zurich, Switzerland',            'switzerland cet'],
+        ].sort((a, b) => a[1].localeCompare(b[1]));
+
+        function tzOffset(ianaKey) {
+            // Returns formatted offset string like "UTC+5:30" or "UTC-8:00"
+            if (ianaKey === 'UTC') return 'UTC+0:00';
+            try {
+                // Use numeric offset via Intl to avoid regex ambiguity with group refs
+                const now = new Date();
+                const utcMs = now.getTime();
+                // Get the local time in the target zone as a string, then parse it back
+                const fmt = new Intl.DateTimeFormat('en-CA', {
+                    timeZone: ianaKey,
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit', second: '2-digit',
+                    hour12: false
+                });
+                const parts = fmt.formatToParts(now);
+                const get = t => parts.find(p => p.type === t)?.value || '00';
+                const localStr = `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:${get('second')}`;
+                const localMs = new Date(localStr + 'Z').getTime();
+                const offsetMins = Math.round((localMs - utcMs) / 60000);
+                const sign = offsetMins >= 0 ? '+' : '-';
+                const absMin = Math.abs(offsetMins);
+                const h = Math.floor(absMin / 60);
+                const m = absMin % 60;
+                return `UTC${sign}${h}:${m.toString().padStart(2, '0')}`;
+            } catch(e) { return ''; }
+        }
+
+        // Populate and wire up the custom TZ picker
+        (function initTZPicker() {
+            const btn = document.getElementById('tzBtn');
+            const btnLabel = document.getElementById('tzBtnLabel');
+            const panel = document.getElementById('tzPanel');
+            const search = document.getElementById('tzSearch');
+            const list = document.getElementById('tzList');
+            if (!btn) return;
+
+            // Auto-detect browser timezone, map to our list or fall back to saved/UTC
+            function detectBrowserTZ() {
+                try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch(e) { return 'UTC'; }
+            }
+
+            let activeTZ = sessionStorage.getItem(TZ_KEY);
+            if (!activeTZ) {
+                // Default to UTC; auto-detect browser TZ only if it's in our list
+                const browser = detectBrowserTZ();
+                activeTZ = TZ_CITIES.find(z => z[0] === browser) ? browser : 'UTC';
+                sessionStorage.setItem(TZ_KEY, activeTZ);
+            }
+
+            function labelFor(ianaKey) {
+                const entry = TZ_CITIES.find(z => z[0] === ianaKey);
+                const city = entry ? entry[1] : ianaKey;
+                const off = tzOffset(ianaKey);
+                return `${city} (${off})`;
+            }
+
+            function applyTZ(ianaKey) {
+                activeTZ = ianaKey;
+                sessionStorage.setItem(TZ_KEY, ianaKey);
+                btnLabel.textContent = labelFor(ianaKey);
+                panel.style.display = 'none';
+                // Re-format all timestamp cells on the page
+                document.querySelectorAll('td.ts[data-raw]').forEach(cell => {
+                    cell.textContent = formatUTC(cell.dataset.raw);
+                });
+            }
+
+            function renderList(filter) {
+                const term = (filter || '').toLowerCase();
+                const filtered = term
+                    ? TZ_CITIES.filter(z =>
+                        z[1].toLowerCase().includes(term) ||
+                        z[0].toLowerCase().includes(term) ||
+                        z[2].toLowerCase().includes(term))
+                    : TZ_CITIES;
+                // UTC always first unless user is searching and it doesn't match
+                const utcEntry = TZ_CITIES.find(z => z[0] === 'UTC');
+                const rest = filtered.filter(z => z[0] !== 'UTC');
+                const matches = (utcEntry && filtered.includes(utcEntry))
+                    ? [utcEntry, ...rest]
+                    : rest;
+
+                list.innerHTML = '';
+                matches.forEach(z => {
+                    const li = document.createElement('li');
+                    const off = tzOffset(z[0]);
+                    li.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f5f5f5;display:flex;justify-content:space-between;align-items:center;';
+                    if (z[0] === activeTZ) li.style.background = '#e3f2fd';
+                    li.innerHTML = `<span>${z[1]}</span><span style="color:#888;font-size:12px;white-space:nowrap;margin-left:8px;">${off}</span>`;
+                    li.addEventListener('mousedown', e => { e.preventDefault(); applyTZ(z[0]); });
+                    li.addEventListener('mouseover', () => { if (z[0] !== activeTZ) li.style.background = '#f5f5f5'; });
+                    li.addEventListener('mouseout',  () => { li.style.background = z[0] === activeTZ ? '#e3f2fd' : ''; });
+                    list.appendChild(li);
+                });
+                if (matches.length === 0) {
+                    list.innerHTML = '<li style="padding:12px;color:#999;font-size:13px;text-align:center;">No results</li>';
+                }
+            }
+
+            // Set initial label
+            btnLabel.textContent = labelFor(activeTZ);
+
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const open = panel.style.display !== 'none';
+                panel.style.display = open ? 'none' : 'block';
+                if (!open) {
+                    search.value = '';
+                    renderList('');
+                    setTimeout(() => search.focus(), 30);
+                    // Scroll active item into view
+                    setTimeout(() => {
+                        const active = list.querySelector('[style*="#e3f2fd"]');
+                        if (active) active.scrollIntoView({block:'center'});
+                    }, 60);
+                }
+            });
+
+            search.addEventListener('input', function() { renderList(this.value); });
+            search.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') { panel.style.display = 'none'; btn.focus(); }
+            });
+
+            document.addEventListener('click', function(e) {
+                if (!document.getElementById('tzPickerWrap')?.contains(e.target)) {
+                    panel.style.display = 'none';
+                }
+            });
+        })();
+
+        function showNotification(message) {
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+
+        socket.on('new_request', function(data) {
+            showNotification(`New access request from ${data.requester} (device: ${data.device_name})`);
+            if (window.location.pathname === '/') {
+                setTimeout(() => window.location.reload(), 2000);
+            }
+        });
+
+        socket.on('request_approved', function(data) {
+            showNotification(`Request #${data.id} approved by ${data.approver}`);
+            if (window.location.pathname === '/') {
+                setTimeout(() => window.location.reload(), 2000);
+            }
+        });
+
+        socket.on('request_denied', function(data) {
+            showNotification(`Request #${data.id} denied by ${data.approver}`);
+            if (window.location.pathname === '/') {
+                setTimeout(() => window.location.reload(), 2000);
+            }
+        });
+
+        socket.on('request_vote', function(data) {
+            showNotification(`Request #${data.id}: ${data.vote_count}/${data.required} approvals (${data.voter.split('@')[0]} voted)`);
+            if (window.location.pathname === '/') {
+                setTimeout(() => window.location.reload(), 2000);
+            }
+        });
+
+        socket.on('request_expired', function(data) {
+            showNotification(`Request #${data.id} access grant expired and revoked`);
+            if (window.location.pathname === '/' || window.location.pathname === '/current-access') {
+                setTimeout(() => window.location.reload(), 2000);
+            }
+        });
+    </script>
+
+    <div style="position: fixed; bottom: 10px; right: 10px; font-size: 11px; color: #999; background: rgba(255,255,255,0.9); padding: 5px 10px; border-radius: 4px;">
+        v{{ app_version }}
+    </div>
+
+    {% block extra_js %}{% endblock %}
+    {% block scripts %}{% endblock %}
+</body>
+</html>

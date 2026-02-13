@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Current Access - Tailscale JIT Access{% endblock %}
+
+{% block content %}
+<h2>Current Active Access</h2>
+<p style="color: #666; margin-bottom: 1.5rem;">Devices currently holding an active posture attribute grant. Times shown in your selected timezone.</p>
+
+<div style="margin-bottom: 20px;">
+    <input type="text" id="searchInput" placeholder="Search by device, user, or attribute..." 
+           style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+</div>
+
+{% if active_grants %}
+<table id="accessTable">
+    <thead>
+        <tr>
+            <th>Device</th>
+            <th>User</th>
+            <th>Attribute</th>
+            <th>Granted By</th>
+            <th>Granted</th>
+            <th>Expires</th>
+            <th>Time Remaining</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for grant in active_grants %}
+        <tr data-device="{{ grant.device_name|lower }}" 
+            data-user="{{ grant.requester|lower }}" 
+            data-attribute="{{ grant.profile|lower }}">
+            <td><strong>{{ grant.device_name }}</strong></td>
+            <td>{{ grant.requester }}</td>
+            <td><code>{{ grant.profile }}</code></td>
+            <td>{{ grant.approver }}</td>
+            <td class="ts" data-raw="{{ grant.approved_at }}">{{ grant.approved_at }}</td>
+            <td class="ts" data-raw="{{ grant.expires_at }}">{{ grant.expires_at }}</td>
+            <td class="expiry-countdown" data-expiry="{{ grant.expires_at }}">
+                <span style="color: #ff9500; font-weight: 500;">calculating...</span>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div style="text-align: center; padding: 60px 20px; color: #666;">
+    <svg width="80" height="80" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin: 0 auto 20px; display: block;">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+    </svg>
+    <p style="font-size: 18px; font-weight: 500; margin: 0;">No active access grants</p>
+    <p style="font-size: 14px; color: #999; margin-top: 8px;">All access has expired or been revoked</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('searchInput')?.addEventListener('input', function(e) {
+    const searchTerm = e.target.value.toLowerCase();
+    document.querySelectorAll('#accessTable tbody tr').forEach(row => {
+        const match = (row.dataset.device + row.dataset.user + row.dataset.attribute).includes(searchTerm);
+        row.style.display = match ? '' : 'none';
+    });
+});
+
+function updateCountdowns() {
+    document.querySelectorAll('.expiry-countdown').forEach(cell => {
+        const expiry = cell.dataset.expiry;
+        if (!expiry) return;
+        const now = new Date();
+        const then = parseUTC(expiry);
+        const diffMins = Math.floor((then - now) / 60000);
+        if (diffMins < 0) {
+            cell.innerHTML = '<span style="color:#8e8e93;">expired</span>';
+        } else if (diffMins < 15) {
+            cell.innerHTML = `<span style="color:#ff3b30;font-weight:600;">${timeAgo(expiry)}</span>`;
+        } else if (diffMins < 60) {
+            cell.innerHTML = `<span style="color:#ff9500;font-weight:500;">${timeAgo(expiry)}</span>`;
+        } else {
+            cell.innerHTML = `<span style="color:#34c759;">${timeAgo(expiry)}</span>`;
+        }
+    });
+}
+
+document.querySelectorAll('td.ts[data-raw]').forEach(cell => {
+    cell.textContent = formatUTC(cell.dataset.raw);
+});
+
+updateCountdowns();
+setInterval(updateCountdowns, 30000);
+</script>
+{% endblock %}

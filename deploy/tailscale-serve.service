@@ -1,0 +1,27 @@
+# =============================================================================
+# Tailscale Serve for JIT Access: systemd Service
+# =============================================================================
+# This ensures Tailscale Serve starts on boot.
+#
+# Install:
+#   1. Edit the CAP_DOMAIN below to match your ACL capability string
+#   2. sudo cp deploy/tailscale-serve.service /etc/systemd/system/
+#   3. sudo systemctl daemon-reload
+#   4. sudo systemctl enable --now tailscale-serve
+# =============================================================================
+
+[Unit]
+Description=Tailscale Serve for JIT Access
+After=network.target tailscaled.service jit-access.service
+Wants=tailscaled.service
+Requires=jit-access.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# IMPORTANT: Replace yourdomain.com/cap/jit-access with your actual capability domain
+ExecStart=/usr/bin/tailscale serve --bg --accept-app-caps=yourdomain.com/cap/jit-access http://127.0.0.1:5000
+
+[Install]
+WantedBy=multi-user.target

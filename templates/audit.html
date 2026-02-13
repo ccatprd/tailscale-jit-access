@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Log - Tailscale JIT Access{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+    <h2 style="margin:0;">Audit Log</h2>
+    <span style="color:#888; font-size:13px; display:flex; align-items:baseline; gap:0; flex-wrap:wrap;">
+        {{ total_entries }} total event{% if total_entries != 1 %}s{% endif %}
+        {% if retention_days > 0 %}&nbsp;&middot;&nbsp;retained {{ retention_days }} days{% else %}&nbsp;&middot;&nbsp;retained indefinitely{% endif %}
+        &nbsp;&middot;&nbsp;times in your local timezone
+        &nbsp;&middot;&nbsp;<label style="cursor:pointer; display:inline-flex; align-items:baseline; gap:4px; white-space:nowrap;">
+            <input type="checkbox" id="hide-expiry" style="cursor:pointer; position:relative; top:1px;">
+            hide auto-revoked
+        </label>
+        <span class="info-tip" style="position:relative; display:inline-flex; align-items:center; margin-left:4px;">
+            <span class="info-icon" tabindex="0" style="display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; border-radius:50%; border:1px solid #bbb; color:#bbb; font-size:10px; font-style:normal; font-weight:700; line-height:1; cursor:default; user-select:none;">i</span>
+            <span class="info-bubble" style="display:none; position:absolute; right:0; top:20px; width:260px; background:#333; color:#fff; font-size:12px; line-height:1.5; padding:10px 12px; border-radius:6px; z-index:100; white-space:normal; font-weight:400; box-shadow:0 2px 8px rgba(0,0,0,.25);">
+                When an approved access grant expires, the background worker calls the Tailscale API to delete the posture attribute, then logs an <strong style="color:#fff;">access_expired</strong> event. These rows confirm the grant was actively revoked, not just forgotten. They are kept for audit completeness but hidden here by default if you prefer a cleaner view.
+            </span>
+        </span>
+    </span>
+</div>
+<style>
+.info-tip:hover .info-bubble,
+.info-tip:focus-within .info-bubble { display:block !important; }
+.info-icon:hover, .info-icon:focus { border-color:#888; color:#888; outline:none; }
+</style>
+
+{# Search bar #}
+<form method="get" action="/audit" style="display:flex; gap:8px; margin-bottom:16px;">
+    <input type="hidden" name="per_page" value="{{ page_size }}">
+    <input
+        type="search"
+        name="q"
+        value="{{ q }}"
+        placeholder="Search by event, user, target, details, or IP&hellip;"
+        style="flex:1; padding:7px 12px; border:1px solid #ddd; border-radius:6px; font-size:14px; outline:none;"
+        autocomplete="off"
+    >
+    <button type="submit" style="padding:7px 16px; background:#5c6bc0; color:#fff; border:none; border-radius:6px; font-size:14px; cursor:pointer;">Search</button>
+    {% if q %}
+    <a href="/audit?per_page={{ page_size }}" style="padding:7px 12px; border:1px solid #ddd; border-radius:6px; font-size:14px; text-decoration:none; color:#555; line-height:1.4;">Clear</a>
+    {% endif %}
+</form>
+
+{% if q %}
+<p style="color:#888; font-size:13px; margin:-8px 0 12px;">
+    {{ total_entries }} result{% if total_entries != 1 %}s{% endif %} for &ldquo;{{ q }}&rdquo;
+</p>
+{% endif %}
+
+{% if audit_entries %}
+    <table>
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Event</th>
+                <th>User</th>
+                <th>Target</th>
+                <th>Details</th>
+                <th>IP Address</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in audit_entries %}
+            {% set is_expiry = entry.event_type == 'access_expired' %}
+            <tr{% if is_expiry %} data-expiry="1" style="color:#aaa;"{% endif %}>
+                <td class="ts" data-raw="{{ entry.timestamp }}" style="white-space:nowrap; font-size:13px;{% if is_expiry %} color:#bbb;{% endif %}">{{ entry.timestamp }}</td>
+                <td style="white-space:nowrap;{% if is_expiry %} color:#bbb;{% endif %}">{{ entry.event_type }}</td>
+                <td{% if is_expiry %} style="color:#bbb;"{% endif %}>{{ entry.user }}</td>
+                <td{% if is_expiry %} style="color:#bbb;"{% endif %}>{{ entry.target or '' }}</td>
+                <td class="audit-details" data-details="{{ entry.details or '' }}" style="font-size:13px; max-width:320px;{% if is_expiry %} color:#bbb;{% endif %}">{{ entry.details or '' }}</td>
+                <td style="font-size:13px;{% if is_expiry %} color:#bbb;{% endif %}">{% if is_expiry %}&ndash;{% else %}{{ entry.ip_address }}{% endif %}</td>
+                <td class="audit-status" data-details="{{ entry.details or '' }}" data-event="{{ entry.event_type }}"></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {# Pagination + per-page selector #}
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-top:20px; flex-wrap:wrap; gap:12px;">
+
+        {# Page navigation #}
+        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            {% if total_pages > 1 %}
+                {% if page > 1 %}
+                    <a href="?page=1&per_page={{ page_size }}{% if q %}&q={{ q | urlencode }}{% endif %}" style="padding:5px 10px; border:1px solid #ddd; border-radius:4px; text-decoration:none; color:#333; font-size:13px;">&laquo; First</a>
+                    <a href="?page={{ page - 1 }}&per_page={{ page_size }}{% if q %}&q={{ q | urlencode }}{% endif %}" style="padding:5px 10px; border:1px solid #ddd; border-radius:4px; text-decoration:none; color:#333; font-size:13px;">&lsaquo; Prev</a>
+                {% endif %}
+
+                {% set win_start = [1, page - 3] | max %}
+                {% set win_end   = [total_pages, page + 3] | min %}
+                {% if win_start > 1 %}<span style="padding:5px 4px; color:#aaa; font-size:13px;">&hellip;</span>{% endif %}
+                {% for p in range(win_start, win_end + 1) %}
+                    {% if p == page %}
+                        <span style="padding:5px 10px; border:1px solid #5c6bc0; border-radius:4px; background:#5c6bc0; color:#fff; font-size:13px; font-weight:600;">{{ p }}</span>
+                    {% else %}
+                        <a href="?page={{ p }}&per_page={{ page_size }}{% if q %}&q={{ q | urlencode }}{% endif %}" style="padding:5px 10px; border:1px solid #ddd; border-radius:4px; text-decoration:none; color:#333; font-size:13px;">{{ p }}</a>
+                    {% endif %}
+                {% endfor %}
+                {% if win_end < total_pages %}<span style="padding:5px 4px; color:#aaa; font-size:13px;">&hellip;</span>{% endif %}
+
+                {% if page < total_pages %}
+                    <a href="?page={{ page + 1 }}&per_page={{ page_size }}{% if q %}&q={{ q | urlencode }}{% endif %}" style="padding:5px 10px; border:1px solid #ddd; border-radius:4px; text-decoration:none; color:#333; font-size:13px;">Next &rsaquo;</a>
+                    <a href="?page={{ total_pages }}&per_page={{ page_size }}{% if q %}&q={{ q | urlencode }}{% endif %}" style="padding:5px 10px; border:1px solid #ddd; border-radius:4px; text-decoration:none; color:#333; font-size:13px;">Last &raquo;</a>
+                {% endif %}
+
+                <span style="color:#999; font-size:12px; margin-left:4px;">Page {{ page }} of {{ total_pages }}</span>
+            {% endif %}
+        </div>
+
+        {# Per-page selector (bottom right) #}
+        <form method="get" action="/audit" style="display:flex; align-items:center; gap:6px;">
+            <input type="hidden" name="page" value="1">
+            {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+            <label for="per_page_select" style="font-size:13px; color:#888;">Rows per page:</label>
+            <select id="per_page_select" name="per_page" onchange="this.form.submit()"
+                style="padding:4px 8px; border:1px solid #ddd; border-radius:4px; font-size:13px; cursor:pointer;">
+                {% for n in valid_per_page %}
+                    <option value="{{ n }}"{% if n == page_size %} selected{% endif %}>{{ n }}</option>
+                {% endfor %}
+            </select>
+        </form>
+
+    </div>
+
+{% else %}
+    <div style="text-align:center; padding:60px 20px; color:#666;">
+        {% if q %}
+            <p style="font-size:18px; font-weight:500; margin:0;">No results for &ldquo;{{ q }}&rdquo;</p>
+            <a href="/audit" style="display:inline-block; margin-top:12px; font-size:14px; color:#5c6bc0;">Clear search</a>
+        {% else %}
+            <svg width="80" height="80" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin:0 auto 20px; display:block;">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            <p style="font-size:18px; font-weight:500; margin:0;">No audit log entries</p>
+        {% endif %}
+    </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.audit-status').forEach(cell => {
+    const ev = cell.dataset.event;
+    const details = cell.dataset.details;
+    if (ev === 'access_expired') {
+        // No badge - grayed-out row is sufficient
+        return;
+    }
+    if (ev !== 'access_request_approved') return;
+    const m = details.match(/expires at ([\d\-T:+\.Z ]+)/);
+    if (!m) return;
+    const expiry = parseUTC(m[1].trim());
+    if (!expiry) return;
+    const active = expiry > new Date();
+    cell.innerHTML = active
+        ? '<span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:12px;font-weight:600;background:#e8f5e9;color:#2e7d32;">Active</span>'
+        : '<span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:12px;font-weight:500;background:#f5f5f5;color:#757575;">Expired</span>';
+});
+
+document.querySelectorAll('td.ts[data-raw]').forEach(cell => {
+    cell.textContent = formatUTC(cell.dataset.raw);
+});
+
+(function() {
+    const cb = document.getElementById('hide-expiry');
+    if (!cb) return;
+    const PREF_KEY = 'audit_hide_expiry';
+    const expiryRows = Array.from(document.querySelectorAll('tr[data-expiry]'));
+
+    function applyPref(hide) {
+        expiryRows.forEach(r => { r.style.display = hide ? 'none' : ''; });
+        cb.checked = hide;
+        localStorage.setItem(PREF_KEY, hide ? '1' : '0');
+    }
+
+    cb.addEventListener('change', () => applyPref(cb.checked));
+    applyPref(localStorage.getItem(PREF_KEY) === '1');
+})();
+
+document.querySelectorAll('.audit-details').forEach(cell => {
+    const details = cell.dataset.details;
+    if (!details) return;
+    const m = details.match(/expires at ([\d\-T:+\.Z ]+)/);
+    if (!m) return;
+    try {
+        const formatted = formatUTC(m[1].trim());
+        cell.textContent = details.replace(/expires at [\d\-T:+\.Z ]+/, 'expires at ' + formatted);
+    } catch(e) {}
+});
+</script>
+{% endblock %}

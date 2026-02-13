@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Debug - JIT Access Management{% endblock %}
+
+{% block content %}
+<h2>Debug Information</h2>
+
+<div style="background: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+    <h3 style="margin-bottom: 15px; color: #333;">Current User</h3>
+    <p><strong>User:</strong> <code>{{ debug_info.current_user }}</code></p>
+    <p><strong>Session ID:</strong> <code>{{ debug_info.session_id }}</code></p>
+    <p><strong>Remote Address:</strong> {{ debug_info.remote_addr }}</p>
+    <p><strong>User Agent:</strong> {{ debug_info.user_agent }}</p>
+</div>
+
+<div style="background: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+    <h3 style="margin-bottom: 15px; color: #333;">Permissions</h3>
+    <table style="margin-top: 0;">
+        <tr>
+            <td><code>can_request_access</code></td>
+            <td>{% if debug_info.permissions.can_request_access %}<span style="color: #4CAF50;">✓ GRANTED</span>{% else %}<span style="color: #f44336;">✗ DENIED</span>{% endif %}</td>
+        </tr>
+        <tr>
+            <td><code>can_approve_requests</code></td>
+            <td>{% if debug_info.permissions.can_approve_requests %}<span style="color: #4CAF50;">✓ GRANTED</span>{% else %}<span style="color: #f44336;">✗ DENIED</span>{% endif %}</td>
+        </tr>
+        <tr>
+            <td><code>can_view_current_access</code></td>
+            <td>{% if debug_info.permissions.can_view_current_access %}<span style="color: #4CAF50;">✓ GRANTED</span>{% else %}<span style="color: #f44336;">✗ DENIED</span>{% endif %}</td>
+        </tr>
+        <tr>
+            <td><code>can_view_audit</code></td>
+            <td>{% if debug_info.permissions.can_view_audit %}<span style="color: #4CAF50;">✓ GRANTED</span>{% else %}<span style="color: #f44336;">✗ DENIED</span>{% endif %}</td>
+        </tr>
+        <tr>
+            <td><code>can_view_debug</code></td>
+            <td>{% if debug_info.permissions.can_view_debug %}<span style="color: #4CAF50;">✓ GRANTED</span>{% else %}<span style="color: #f44336;">✗ DENIED</span>{% endif %}</td>
+        </tr>
+        <tr>
+            <td><code>can_admin_config</code></td>
+            <td>{% if debug_info.permissions.can_admin_config %}<span style="color: #4CAF50;">✓ GRANTED</span>{% else %}<span style="color: #f44336;">✗ DENIED</span>{% endif %}</td>
+        </tr>
+    </table>
+</div>
+
+<div style="background: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+    <h3 style="margin-bottom: 15px; color: #333;">Tailscale Headers</h3>
+    <p><strong>Tailscale-User-Login:</strong> <code>{{ debug_info.all_headers.get('Tailscale-User-Login', 'Not set') }}</code></p>
+    <p><strong>Tailscale-App-Capabilities:</strong></p>
+    <pre style="background: #fff; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px;">{{ debug_info.capabilities_header or '{}' }}</pre>
+</div>
+
+<div style="background: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+    <h3 style="margin-bottom: 15px; color: #333;">Parsed Capabilities</h3>
+    <pre style="background: #fff; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px;">{{ debug_info.parsed_capabilities | tojson(indent=2) }}</pre>
+</div>
+
+<details style="background: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+    <summary style="cursor: pointer; font-weight: 600; color: #333;">All HTTP Headers (click to expand)</summary>
+    <pre style="background: #fff; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px; margin-top: 15px;">{{ debug_info.all_headers | tojson(indent=2) }}</pre>
+</details>
+
+<details style="background: #f9f9f9; padding: 20px; border-radius: 8px;">
+    <summary style="cursor: pointer; font-weight: 600; color: #333;">Session Data (click to expand)</summary>
+    <pre style="background: #fff; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px; margin-top: 15px;">{{ debug_info.session_data | tojson(indent=2) }}</pre>
+</details>
+
+{% endblock %}

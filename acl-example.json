@@ -1,0 +1,179 @@
+// Complete ACL Example for Tailscale JIT Access Management
+// 
+// This example shows how to configure your Tailscale ACL to work with
+// the JIT Access Management application.
+//
+// Replace the following placeholders with your values:
+//   - yourdomain.com → Your domain (e.g., example.com, mycompany.net)
+//   - admin@example.com → Admin user email
+//   - tag:jit-access-app → Tag for the device/VM running the JIT app
+//   - tag:database-servers → Tag for your protected resources (example)
+//   - tag:production-servers → Tag for SSH-accessible servers (example)
+
+{
+	// Define grants that govern access for users, groups, autogroups, tags,
+	// Tailscale IP addresses, and subnet ranges.
+	"grants": [
+		// ====================================================================
+		// JIT ACCESS APP PERMISSIONS
+		// ====================================================================
+		
+		// Grant admin full access to JIT app on tagged device
+		// can_admin_config: allows managing required approvals per profile via /admin
+		{
+			"src": ["admin@example.com"],
+			"dst": ["tag:jit-access-app"],
+			"app": {
+				"yourdomain.com/cap/jit-access": [
+					{
+						"can_request_access":      true,
+						"can_approve_requests":    true,
+						"can_view_current_access": true,
+						"can_view_audit":          true,
+						"can_view_debug":          true,
+						"can_admin_config":        true
+					}
+				]
+			}
+		},
+		
+		// Grant all tailnet members ability to request access
+		{
+			"src": ["autogroup:member"],
+			"dst": ["tag:jit-access-app"],
+			"app": {
+				"yourdomain.com/cap/jit-access": [
+					{
+						"can_request_access": true
+					}
+				]
+			}
+		},
+		
+		// Optional: Grant specific group approval permissions
+		// Useful for multi-approval workflows where you want a separate approver pool
+		// {
+		// 	"src": ["group:approvers"],
+		// 	"dst": ["tag:jit-access-app"],
+		// 	"app": {
+		// 		"yourdomain.com/cap/jit-access": [
+		// 			{
+		// 				"can_request_access":      true,
+		// 				"can_approve_requests":    true,
+		// 				"can_view_current_access": true,
+		// 				"can_view_audit":          true
+		// 			}
+		// 		]
+		// 	}
+		// },
+		
+		// ====================================================================
+		// RESOURCE ACCESS USING POSTURE ATTRIBUTES
+		// ====================================================================
+		
+		// Example 1: Database access requires prodDbAccess posture attribute
+		{
+			"src":        ["autogroup:member"],
+			"dst":        ["tag:database-servers"],
+			"ip":         ["5432"],  // PostgreSQL port
+			"srcPosture": ["posture:hasProdDbAccess"]
+		},
+		
+		// Example 2: SSH access to production servers requires cicdAdmin attribute
+		{
+			"src":        ["autogroup:member"],
+			"dst":        ["tag:production-servers"],
+			"ip":         ["tcp:22"],
+			"srcPosture": ["posture:hasCicdAdmin"]
+		},
+		
+		// Example 3: Customer data access
+		{
+			"src":        ["autogroup:member"],
+			"dst":        ["tag:customer-data-servers"],
+			"ip":         ["443", "8080"],
+			"srcPosture": ["posture:hasCustomerDataAccess"]
+		},
+		
+		// ====================================================================
+		// STANDARD TAILSCALE GRANTS (keep your existing grants)
+		// ====================================================================
+		
+		// Allow all connections (adjust based on your security requirements)
+		{
+			"src": ["autogroup:member"],
+			"dst": ["autogroup:member"],
+			"ip":  ["*"]
+		},
+		
+		// Allow exit node usage
+		{
+			"src": ["autogroup:member"],
+			"dst": ["autogroup:internet"],
+			"ip":  ["*"]
+		}
+	],
+	
+	// ====================================================================
+	// POSTURE DEFINITIONS
+	// ====================================================================
+	
+	"postures": {
+		// Posture check for production database access
+		// Matches requesting devices that have had custom:prodDbAccess set on them via a JIT grant
+		"posture:hasProdDbAccess": [
+			"node:tailscaleCustom:prodDbAccess == true"
+		],
+
+		// Posture check for customer data access
+		// Matches requesting devices that have had custom:customerDataAccess set on them via a JIT grant
+		"posture:hasCustomerDataAccess": [
+			"node:tailscaleCustom:customerDataAccess == true"
+		],
+
+		// Posture check for CI/CD admin access
+		// Matches requesting devices that have had custom:cicdAdmin set on them via a JIT grant
+		"posture:hasCicdAdmin": [
+			"node:tailscaleCustom:cicdAdmin == true"
+		]
+		
+		// Add more postures as needed for your access profiles
+	},
+	
+	// ====================================================================
+	// TAG OWNERS
+	// ====================================================================
+	
+	"tagOwners": {
+		// JIT access application server/device
+		"tag:jit-access-app": ["admin@example.com"],
+		
+		// Protected resources (examples)
+		"tag:database-servers":       ["admin@example.com"],
+		"tag:production-servers":     ["admin@example.com"],
+		"tag:customer-data-servers":  ["admin@example.com"]
+	},
+	
+	// ====================================================================
+	// SSH CONFIGURATION (optional)
+	// ====================================================================
+	
+	"ssh": [
+		// Allow SSH to production servers with cicdAdmin posture attribute
+		{
+			"action":     "accept",
+			"src":        ["autogroup:member"],
+			"dst":        ["tag:production-servers"],
+			"users":      ["root", "ubuntu"],
+			"srcPosture": ["posture:hasCicdAdmin"]
+		},
+		
+		// Allow all users to SSH into their own devices
+		{
+			"action": "check",
+			"src":    ["autogroup:member"],
+			"dst":    ["autogroup:self"],
+			"users":  ["autogroup:nonroot", "root"]
+		}
+	]
+}

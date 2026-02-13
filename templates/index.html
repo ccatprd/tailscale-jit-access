@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+{% if can_approve %}
+{# ------------------------------------------------------------------ #}
+{# APPROVER VIEW: full table with vote controls                        #}
+{# ------------------------------------------------------------------ #}
+<h2>Pending Access Requests</h2>
+
+{% if pending_requests %}
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Requester</th>
+            <th>Device</th>
+            <th>Profile</th>
+            <th>Duration</th>
+            <th>Reason</th>
+            <th>Submitted</th>
+            <th>Approvals</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for req in pending_requests %}
+        <tr id="row-{{ req.id }}">
+            <td>{{ req.id }}</td>
+            <td>{{ req.requester }}</td>
+            <td>{{ req.device_name }}</td>
+            <td><code>{{ req.profile }}</code></td>
+            <td>{{ req.duration }} min</td>
+            <td>{{ req.reason }}</td>
+            <td class="ts" data-raw="{{ req.created_at }}">{{ req.created_at }}</td>
+            <td style="white-space:nowrap; min-width:120px;">
+                {% if req.required_approvals > 1 %}
+                <div style="font-size:13px; font-weight:600; color:{% if req.vote_count == 0 %}#999{% elif req.vote_count < req.required_approvals %}#e67e22{% else %}#27ae60{% endif %};">
+                    {{ req.vote_count }}/{{ req.required_approvals }}
+                </div>
+                {% if req.voters %}
+                <div style="font-size:11px; color:#888; margin-top:2px;">
+                    {% for v in req.voters %}<span title="{{ v }}" style="display:inline-block;background:#e8f5e9;color:#2e7d32;border-radius:3px;padding:1px 5px;margin:1px;font-size:11px;">{{ v.split('@')[0] }}</span>{% endfor %}
+                </div>
+                {% endif %}
+                {% else %}
+                <span style="font-size:12px;color:#aaa;">1 required</span>
+                {% endif %}
+                {% if req.authorized_approvers %}
+                <div style="margin-top:4px;">
+                    <span style="font-size:11px;color:#888;">Only: </span>
+                    {% for a in req.authorized_approvers %}
+                    {% if a.is_required %}
+                    <span style="display:inline-block;background:#ffebee;color:#c62828;border-radius:3px;padding:1px 5px;margin:1px;font-size:11px;border:1px solid #ef9a9a;">&#9733; {{ a.approver }} (required)</span>
+                    {% else %}
+                    <span style="display:inline-block;background:#e8eaf6;color:#3949ab;border-radius:3px;padding:1px 5px;margin:1px;font-size:11px;">{{ a.approver }}</span>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+                {% if req.missing_required and req.vote_count >= req.required_approvals %}
+                <div style="margin-top:4px; font-size:11px; color:#c62828;">
+                    &#9733; Waiting on required approver{{ 's' if req.missing_required|length > 1 else '' }}:
+                    {% for e in req.missing_required %}{{ e }}{% if not loop.last %}, {% endif %}{% endfor %}
+                </div>
+                {% endif %}
+                {% endif %}
+            </td>
+            <td style="white-space: nowrap;">
+                {% if req.already_voted %}
+                <button class="approve" disabled style="opacity:0.45;cursor:not-allowed;" title="You already approved this request">Approved</button>
+                {% elif req.not_authorized %}
+                <button class="approve" disabled style="opacity:0.3;cursor:not-allowed;" title="You are not an authorized approver for this profile">Restricted</button>
+                {% else %}
+                <button class="approve" onclick="approveRequest({{ req.id }}, this)">Approve</button>
+                {% endif %}
+                <button class="deny" onclick="openDenyModal({{ req.id }})">Deny</button>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div style="text-align: center; padding: 60px 20px; color: #666;">
+    <svg width="80" height="80" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin: 0 auto 20px; display: block;">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+    </svg>
+    <p style="font-size: 18px; font-weight: 500; margin: 0;">No pending requests</p>
+    <p style="font-size: 14px; color: #999; margin-top: 8px;">All caught up!</p>
+</div>
+{% endif %}
+
+{% else %}
+{# ------------------------------------------------------------------ #}
+{# REQUESTER VIEW: status cards for their own requests                 #}
+{# ------------------------------------------------------------------ #}
+<h2>My Access Requests</h2>
+
+{% if pending_requests %}
+<div style="margin-bottom:32px;">
+    <h3 style="font-size:13px; font-weight:600; color:#888; text-transform:uppercase; letter-spacing:.05em; margin:0 0 12px;">Pending</h3>
+    <div style="display:flex; flex-direction:column; gap:10px;">
+        {% for req in pending_requests %}
+        <div style="background:white; border:1px solid #e0e0e0; border-left:4px solid {% if req.status == 'partially_approved' %}#e67e22{% else %}#3b82f6{% endif %}; border-radius:6px; padding:16px 20px;">
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px;">
+                <div style="flex:1; min-width:0;">
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+                        {% if req.status == 'partially_approved' %}
+                        <span style="font-size:11px; font-weight:600; background:#fff3e0; color:#e65100; border-radius:20px; padding:2px 10px; white-space:nowrap;">In Review</span>
+                        {% else %}
+                        <span style="font-size:11px; font-weight:600; background:#e3f2fd; color:#1565c0; border-radius:20px; padding:2px 10px; white-space:nowrap;">Pending</span>
+                        {% endif %}
+                        <span style="font-size:13px; font-weight:600; color:#222; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ req.device_name }}</span>
+                        <code style="font-size:11px; color:#888;">{{ req.profile }}</code>
+                    </div>
+                    <div style="font-size:13px; color:#555; margin-bottom:4px;">{{ req.reason }}</div>
+                    <div style="font-size:12px; color:#aaa;">
+                        {{ req.duration }} min &middot; submitted <span class="ts" data-raw="{{ req.created_at }}">{{ req.created_at }}</span>
+                    </div>
+                </div>
+                {% if req.status == 'partially_approved' and req.required_approvals > 1 %}
+                <div style="text-align:center; flex-shrink:0;">
+                    <div style="font-size:20px; font-weight:700; color:#e67e22; line-height:1;">{{ req.vote_count }}/{{ req.required_approvals }}</div>
+                    <div style="font-size:10px; color:#aaa; margin-top:2px;">approvals</div>
+                </div>
+                {% endif %}
+            </div>
+            {% if req.authorized_approvers %}
+            <div style="margin-top:10px; padding-top:10px; border-top:1px solid #f0f0f0; font-size:12px; color:#888;">
+                Contact for approval:
+                {% for a in req.authorized_approvers %}
+                {% if a.is_required %}
+                <span style="color:#c62828; font-weight:600;">&#9733; {{ a.approver }}</span>{% if not loop.last %}, {% endif %}
+                {% else %}
+                <span style="color:#555;">{{ a.approver }}</span>{% if not loop.last %}, {% endif %}
+                {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if my_recent %}
+<div>
+    <h3 style="font-size:13px; font-weight:600; color:#888; text-transform:uppercase; letter-spacing:.05em; margin:0 0 12px;">Recent</h3>
+    <div style="display:flex; flex-direction:column; gap:8px;">
+        {% for req in my_recent %}
+        <div style="background:white; border:1px solid #e0e0e0; border-left:4px solid {% if req.status == 'approved' %}#27ae60{% elif req.status == 'expired' %}#e67e22{% else %}#e53935{% endif %}; border-radius:6px; padding:14px 20px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                {% if req.status == 'approved' %}
+                <span style="font-size:11px; font-weight:600; background:#e8f5e9; color:#1b5e20; border-radius:20px; padding:2px 10px; white-space:nowrap;">Approved</span>
+                {% elif req.status == 'expired' %}
+                <span style="font-size:11px; font-weight:600; background:#fff3e0; color:#e65100; border-radius:20px; padding:2px 10px; white-space:nowrap;">Expired</span>
+                {% else %}
+                <span style="font-size:11px; font-weight:600; background:#ffebee; color:#b71c1c; border-radius:20px; padding:2px 10px; white-space:nowrap;">Denied</span>
+                {% endif %}
+                <span style="font-size:13px; font-weight:600; color:#222;">{{ req.device_name }}</span>
+                <code style="font-size:11px; color:#888;">{{ req.profile }}</code>
+                <span style="font-size:12px; color:#aaa; margin-left:auto; white-space:nowrap;">{{ req.duration }} min &middot; <span class="ts" data-raw="{{ req.processed_at }}">{{ req.processed_at }}</span></span>
+            </div>
+            {% if req.status == 'denied' and req.denial_reason %}
+            <div style="margin-top:8px; font-size:12px; color:#c62828; padding-left:2px;">
+                Reason: {{ req.denial_reason }}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if not pending_requests and not my_recent %}
+<div style="text-align:center; padding:60px 20px; color:#666;">
+    <svg width="64" height="64" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin:0 auto 16px; display:block; color:#ccc;">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+    </svg>
+    <p style="font-size:16px; font-weight:500; margin:0; color:#555;">No requests yet</p>
+    <p style="font-size:13px; color:#999; margin-top:6px;"><a href="/request" style="color:#3b82f6;">Submit an access request</a> to get started.</p>
+</div>
+{% endif %}
+
+{% endif %}
+
+<!-- Deny modal (approvers only) -->
+{% if can_approve %}
+<div id="denyModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:500; align-items:center; justify-content:center;">
+    <div style="background:white; border-radius:8px; padding:28px; width:100%; max-width:440px; box-shadow:0 8px 32px rgba(0,0,0,0.18); margin:20px;">
+        <h3 style="margin:0 0 16px; color:#333; font-size:18px;">Deny Request</h3>
+        <p style="color:#666; font-size:14px; margin:0 0 16px;">Provide a reason so the requester knows why access was denied.</p>
+        <textarea id="denyReason" rows="3" placeholder="Reason for denial..."
+            style="width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:4px; font-size:14px; font-family:inherit; resize:vertical; box-sizing:border-box;"></textarea>
+        <div style="display:flex; gap:10px; margin-top:16px; justify-content:flex-end;">
+            <button onclick="closeDenyModal()" style="background:#f5f5f5; color:#333; padding:8px 20px; border:1px solid #ddd; border-radius:4px; font-size:14px; cursor:pointer;">Cancel</button>
+            <button onclick="submitDeny()" class="deny" style="padding:8px 20px;">Deny Request</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let _denyRequestId = null;
+
+function openDenyModal(id) {
+    _denyRequestId = id;
+    document.getElementById('denyReason').value = '';
+    document.getElementById('denyReason').style.borderColor = '#ddd';
+    const modal = document.getElementById('denyModal');
+    modal.style.display = 'flex';
+    setTimeout(() => document.getElementById('denyReason').focus(), 50);
+}
+
+function closeDenyModal() {
+    document.getElementById('denyModal').style.display = 'none';
+    _denyRequestId = null;
+}
+
+document.getElementById('denyModal').addEventListener('click', function(e) {
+    if (e.target === this) closeDenyModal();
+});
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeDenyModal();
+});
+
+async function approveRequest(id, btn) {
+    btn.disabled = true;
+    btn.textContent = 'Approving...';
+
+    try {
+        const response = await fetch(`/api/approve/${id}`, { method: 'POST' });
+        const data = await response.json().catch(() => ({}));
+
+        if (response.ok) {
+            const row = document.getElementById(`row-${id}`);
+            if (data.status === 'approved') {
+                row.style.backgroundColor = '#d4edda';
+                const cols = row.querySelectorAll('td').length;
+                row.innerHTML = `<td colspan="${cols}" style="text-align:center; padding:20px; color:#155724;">
+                    Request #${id} approved - access granted
+                </td>`;
+                setTimeout(() => location.reload(), 2000);
+            } else if (data.status === 'vote_recorded') {
+                row.style.backgroundColor = '#fff8e1';
+                const cells = row.querySelectorAll('td');
+                const voteCell = cells[7];
+                if (voteCell) {
+                    const quorumMet = data.vote_count >= data.required;
+                    const color = quorumMet ? '#27ae60' : '#e67e22';
+                    let voterBadges = data.voters.map(v =>
+                        `<span title="${v}" style="display:inline-block;background:#e8f5e9;color:#2e7d32;border-radius:3px;padding:1px 5px;margin:1px;font-size:11px;">${v.split('@')[0]}</span>`
+                    ).join('');
+                    let missingHtml = '';
+                    if (quorumMet && data.missing_required && data.missing_required.length > 0) {
+                        const names = data.missing_required.join(', ');
+                        missingHtml = `<div style="margin-top:3px;font-size:11px;color:#c62828;">&#9733; Waiting on: ${names}</div>`;
+                    }
+                    voteCell.innerHTML = `<div style="font-size:13px;font-weight:600;color:${color};">${data.vote_count}/${data.required}</div><div style="font-size:11px;color:#888;margin-top:2px;">${voterBadges}</div>${missingHtml}`;
+                }
+                btn.textContent = 'Approved';
+                btn.style.opacity = '0.45';
+                btn.style.cursor = 'not-allowed';
+                btn.title = 'You already approved this request';
+                setTimeout(() => { row.style.backgroundColor = ''; }, 3000);
+            }
+        } else {
+            const msg = data.error || `Server error ${response.status}`;
+            showInlineError(id, `Approval failed: ${msg}`);
+            btn.disabled = false;
+            btn.textContent = 'Approve';
+        }
+    } catch (err) {
+        showInlineError(id, `Network error: ${err.message}`);
+        btn.disabled = false;
+        btn.textContent = 'Approve';
+    }
+}
+
+async function submitDeny() {
+    const id = _denyRequestId;
+    const reason = document.getElementById('denyReason').value.trim();
+    if (!reason) {
+        document.getElementById('denyReason').style.borderColor = '#f44336';
+        return;
+    }
+
+    closeDenyModal();
+
+    try {
+        const response = await fetch(`/api/deny/${id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason })
+        });
+        const data = await response.json().catch(() => ({}));
+
+        if (response.ok) {
+            const row = document.getElementById(`row-${id}`);
+            const cols = row.querySelectorAll('td').length;
+            row.style.backgroundColor = '#f8d7da';
+            row.innerHTML = `<td colspan="${cols}" style="text-align:center; padding:20px; color:#721c24;">
+                Request #${id} denied
+            </td>`;
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            const msg = data.error || `Server error ${response.status}`;
+            showInlineError(id, `Denial failed: ${msg}`);
+        }
+    } catch (err) {
+        showInlineError(id, `Network error: ${err.message}`);
+    }
+}
+
+function showInlineError(id, msg) {
+    const row = document.getElementById(`row-${id}`);
+    const existing = document.getElementById(`err-${id}`);
+    if (existing) existing.remove();
+    const cols = row.querySelectorAll('td').length;
+    const errRow = document.createElement('tr');
+    errRow.id = `err-${id}`;
+    errRow.innerHTML = `<td colspan="${cols}" style="background:#fff3cd; color:#856404; padding:10px 16px; font-size:13px; border-bottom:1px solid #ffc107;">
+        ${msg}
+    </td>`;
+    row.insertAdjacentElement('afterend', errRow);
+}
+</script>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('td.ts[data-raw], span.ts[data-raw]').forEach(cell => {
+    cell.textContent = formatUTC(cell.dataset.raw);
+});
+</script>
+{% endblock %}

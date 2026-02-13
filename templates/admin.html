@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Admin - Tailscale JIT Access{% endblock %}
+
+{% block content %}
+<h2>Approval Configuration</h2>
+<p style="color:#666; margin-bottom:1.5rem;">Configure how many approvals each profile requires and optionally restrict which users may approve it.</p>
+
+{% if errors %}
+<div style="background:#fff3cd; border:1px solid #ffc107; border-radius:4px; padding:14px 16px; margin-bottom:20px; color:#856404; font-size:14px;">
+    <strong>Please fix the following:</strong>
+    <ul style="margin:6px 0 0 18px; padding:0;">
+        {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{% if success %}
+<div style="background:#d4edda; border:1px solid #c3e6cb; border-radius:4px; padding:14px 16px; margin-bottom:20px; color:#155724; font-size:14px;">
+    {{ success }}
+</div>
+{% endif %}
+
+<input type="text" id="profileFilter" placeholder="Filter by profile name or attribute..." autocomplete="off"
+    style="width:100%; max-width:640px; padding:9px 12px; border:1px solid #ddd; border-radius:6px; font-size:13px; color:#333; box-sizing:border-box; margin-bottom:16px; display:block;">
+<div id="profileNoResults" style="display:none; color:#888; font-size:13px; margin-bottom:16px;">No profiles match.</div>
+
+<form method="POST">
+{% for profile in profiles %}
+{% set safe_id = profile.id.replace(':', '_').replace('-', '_') %}
+{% set rule = rules.get(profile.id) %}
+{% set current_val = rule.required_approvals if rule else default_required %}
+{% set current_approvers = approvers_by_profile.get(profile.id, []) %}
+
+<div class="profile-card" data-name="{{ profile.name | lower }}" data-id="{{ profile.id | lower }}"
+    style="background:white; border:1px solid #e0e0e0; border-radius:8px; margin-bottom:16px; max-width:640px; overflow:hidden;">
+
+    <!-- Profile header -->
+    <div style="padding:14px 20px; border-bottom:1px solid #f0f0f0; background:#fafafa; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span style="font-weight:600; font-size:14px; color:#222;">{{ profile.name }}</span>
+        <code style="font-size:11px; color:#aaa;">{{ profile.id }}</code>
+    </div>
+
+    <div style="padding:20px;">
+
+        <!-- Required approvals row -->
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:20px;">
+            <label style="font-size:13px; font-weight:600; color:#444; white-space:nowrap; min-width:140px;">Required Approvals</label>
+            <input type="number" name="req_{{ safe_id }}" value="{{ current_val }}"
+                min="1" max="3" required
+                style="width:60px; padding:6px 8px; border:1px solid #ddd; border-radius:4px; font-size:15px; text-align:center; color:#222;">
+            <span style="font-size:13px; color:#888;">approval{{ 's' if current_val != 1 else '' }} needed &nbsp;&middot;&nbsp; 1, 2, or 3</span>
+        </div>
+
+        <!-- Authorized approvers -->
+        <div>
+            <div style="display:flex; align-items:baseline; gap:8px; margin-bottom:10px;">
+                <span style="font-size:13px; font-weight:600; color:#444;">Authorized Approvers</span>
+                <span style="font-size:12px; color:#bbb;">optional, up to 3 &mdash; <a href="#how-it-works" style="color:#bbb;">how does this work?</a></span>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:8px;">
+                {% for i in range(1, 4) %}
+                {% set approver_data = current_approvers[i-1] if current_approvers|length >= i else none %}
+                {% set approver_email = approver_data.approver if approver_data else '' %}
+                {% set approver_req = approver_data.is_required if approver_data else false %}
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <input type="email" name="approver_{{ safe_id }}_{{ i }}"
+                        value="{{ approver_email }}"
+                        placeholder="Email address"
+                        style="flex:1; padding:8px 12px; border:1px solid #ddd; border-radius:4px; font-size:13px; color:#333; box-sizing:border-box;">
+                    <label style="display:flex; align-items:center; gap:5px; font-size:12px; color:#888; cursor:pointer; white-space:nowrap; user-select:none;">
+                        <input type="checkbox" name="required_{{ safe_id }}_{{ i }}" value="1"
+                            id="req_{{ safe_id }}_{{ i }}"
+                            {{ 'checked' if approver_req else '' }}
+                            style="width:14px; height:14px; accent-color:#e53935; cursor:pointer; margin:0;">
+                        <span style="{{ 'color:#c62828; font-weight:600;' if approver_req else '' }}">Required</span>
+                    </label>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endfor %}
+
+<div style="margin-top:12px; max-width:640px; display:flex; justify-content:flex-end;">
+    <button type="submit" class="btn-primary">Save All Changes</button>
+</div>
+</form>
+
+<div id="how-it-works" style="margin-top:48px; max-width:640px; border-top:1px solid #eee; padding-top:24px;">
+    <h3 style="margin:0 0 12px; font-size:14px; font-weight:600; color:#555; text-transform:uppercase; letter-spacing:.05em;">How it works</h3>
+    <ul style="padding-left:1.2rem; line-height:1.9; color:#666; font-size:13px; margin:0;">
+        <li>When a profile requires more than 1 approval, the request stays pending until enough approvers have voted.</li>
+        <li>Each eligible approver sees the request and can cast one vote. Vote progress is shown on the Home page.</li>
+        <li>Access is only granted once the required number of votes is reached.</li>
+        <li>Any approver can deny the request at any time, cancelling it immediately.</li>
+        <li>An approver cannot vote twice on the same request.</li>
+        <li><strong>Authorized Approvers</strong>: when set, only listed users may approve. If fewer are listed than required, anyone with approval permission fills the remaining slots.</li>
+        <li><strong>Required</strong> (checkbox): a required approver must personally vote before access is granted, even if general quorum is already met by others.</li>
+        <li>If self-approval is disabled (<code>ALLOW_SELF_APPROVE=false</code>), requesters cannot vote on their own requests.</li>
+        <li>To grant the <code>can_admin_config</code> capability, update your Tailscale ACL grants section.</li>
+    </ul>
+</div>
+
+<div style="margin-top:32px; max-width:640px; border-top:1px solid #eee; padding-top:24px;">
+    <h3 style="margin:0 0 8px; font-size:14px; font-weight:600; color:#555; text-transform:uppercase; letter-spacing:.05em;">Saving Changes to Config</h3>
+    <p style="font-size:13px; color:#666; line-height:1.7; margin:0 0 12px;">
+        Changes made on this page take effect immediately but live only in the database. They will be lost if the database is reset or the app is reinstalled. To make them permanent, export them back to <code>config.py</code> and commit that file to git — that way your approval rules are versioned alongside your deployment.
+    </p>
+    <a href="/admin/export-config" style="font-size:13px; color:#1a73e8;">Download config.py export</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Profile filter
+document.getElementById('profileFilter').addEventListener('input', function() {
+    var q = this.value.trim().toLowerCase();
+    var cards = document.querySelectorAll('.profile-card');
+    var visible = 0;
+    cards.forEach(function(card) {
+        var match = !q || card.dataset.name.includes(q) || card.dataset.id.includes(q);
+        card.style.display = match ? '' : 'none';
+        if (match) visible++;
+    });
+    document.getElementById('profileNoResults').style.display = (q && visible === 0) ? '' : 'none';
+});
+
+// Highlight "Required" label text in red when its checkbox is checked
+document.querySelectorAll('input[type=checkbox][name^=required_]').forEach(function(cb) {
+    var label = cb.parentElement.querySelector('span');
+    cb.addEventListener('change', function() {
+        label.style.color = this.checked ? '#c62828' : '';
+        label.style.fontWeight = this.checked ? '600' : '';
+    });
+});
+document.querySelectorAll('td.ts[data-raw], span.ts[data-raw]').forEach(cell => {
+    cell.textContent = formatUTC(cell.dataset.raw);
+});
+</script>
+{% endblock %}
