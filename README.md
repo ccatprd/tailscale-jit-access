@@ -418,7 +418,7 @@ This pulls from git, copies updated files to `/opt/tailscale-jit-access/`, insta
 
 ```bash
 curl http://localhost:5000/healthz
-# {"status":"ok","version":"1.0.0","database":"ok"}
+# {"status":"ok","version":"1.1.0","database":"ok"}
 ```
 
 ### Database Backup
