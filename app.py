@@ -596,7 +596,9 @@ def index():
             pending_requests.append(req)
 
         # For non-approvers: also fetch their recent completed requests (last 10)
+        # and any currently active grants
         my_recent = []
+        my_active = []
         if not can_approve:
             recent_rows = conn.execute(
                 """SELECT id, device_name, profile, duration, reason, status,
@@ -610,10 +612,29 @@ def index():
             ).fetchall()
             my_recent = [dict(r) for r in recent_rows]
 
+            # Active grants: approved requests whose expiry hasn't passed yet
+            now = datetime.now(timezone.utc)
+            for row in my_recent:
+                if row["status"] != "approved" or not row["processed_at"]:
+                    continue
+                try:
+                    processed_at = datetime.fromisoformat(row["processed_at"].replace("Z", "+00:00"))
+                    if processed_at.tzinfo is None:
+                        processed_at = processed_at.replace(tzinfo=timezone.utc)
+                except (ValueError, AttributeError):
+                    continue
+                expires_at = processed_at + timedelta(minutes=int(row["duration"]))
+                if expires_at > now:
+                    my_active.append({
+                        **row,
+                        "expires_at": expires_at.isoformat(),
+                    })
+
     return render_template(
         "index.html",
         pending_requests=pending_requests,
         my_recent=my_recent,
+        my_active=my_active,
         can_approve=can_approve,
         can_view_audit=can_view_audit,
         can_view_current_access=has_permission("can_view_current_access"),
