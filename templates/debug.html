@@ -45,7 +45,7 @@
 
 <div style="background: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
     <h3 style="margin-bottom: 15px; color: #333;">Tailscale Headers</h3>
-    <p><strong>Tailscale-User-Login:</strong> <code>{{ debug_info.all_headers.get('Tailscale-User-Login', 'Not set') }}</code></p>
+    <p><strong>Tailscale-User-Login:</strong> <code>{{ debug_info.tailscale_user_header or 'Not set' }}</code></p>
     <p><strong>Tailscale-App-Capabilities:</strong></p>
     <pre style="background: #fff; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px;">{{ debug_info.capabilities_header or '{}' }}</pre>
 </div>
@@ -54,15 +54,5 @@
     <h3 style="margin-bottom: 15px; color: #333;">Parsed Capabilities</h3>
     <pre style="background: #fff; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px;">{{ debug_info.parsed_capabilities | tojson(indent=2) }}</pre>
 </div>
-
-<details style="background: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-    <summary style="cursor: pointer; font-weight: 600; color: #333;">All HTTP Headers (click to expand)</summary>
-    <pre style="background: #fff; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px; margin-top: 15px;">{{ debug_info.all_headers | tojson(indent=2) }}</pre>
-</details>
-
-<details style="background: #f9f9f9; padding: 20px; border-radius: 8px;">
-    <summary style="cursor: pointer; font-weight: 600; color: #333;">Session Data (click to expand)</summary>
-    <pre style="background: #fff; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px; margin-top: 15px;">{{ debug_info.session_data | tojson(indent=2) }}</pre>
-</details>
 
 {% endblock %}
