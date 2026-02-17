@@ -1266,8 +1266,10 @@ def approve_request(request_id):
     if not token:
         return jsonify({"error": "Failed to get Tailscale access token"}), 500
 
-    expiry_time = datetime.now(timezone.utc) + timedelta(minutes=duration)
+    now_utc = datetime.now(timezone.utc)
+    expiry_time = now_utc + timedelta(minutes=duration)
     expiry_str = expiry_time.isoformat()
+    now_utc_str = now_utc.strftime("%Y-%m-%d %H:%M:%S")
 
     api_url = f"https://api.tailscale.com/api/v2/device/{device_id}/attributes/{profile}"
     headers_ts = {
@@ -1295,9 +1297,9 @@ def approve_request(request_id):
     with get_db() as conn:
         cursor = conn.execute(
             """UPDATE access_requests
-               SET status = 'approved', approver = ?, processed_at = CURRENT_TIMESTAMP
+               SET status = 'approved', approver = ?, processed_at = ?
                WHERE id = ? AND status IN ('pending', 'partially_approved')""",
-            (approvers_str, request_id),
+            (approvers_str, now_utc_str, request_id),
         )
         if cursor.rowcount == 0:
             logger.warning("Request #%d already fully processed (TOCTOU race)", request_id)
@@ -1357,9 +1359,9 @@ def deny_request(request_id):
 
         conn.execute(
             """UPDATE access_requests
-               SET status = 'denied', approver = ?, denial_reason = ?, processed_at = CURRENT_TIMESTAMP
+               SET status = 'denied', approver = ?, denial_reason = ?, processed_at = ?
                WHERE id = ? AND status IN ('pending', 'partially_approved')""",
-            (user, reason, request_id),
+            (user, reason, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), request_id),
         )
 
     log_audit(

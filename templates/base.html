@@ -309,7 +309,8 @@
             if (diffMins < 0) return 'expired';
             if (diffMins < 60) return `${diffMins} min from now`;
             const diffHours = Math.floor(diffMins / 60);
-            if (diffHours < 24) return `${diffHours}h from now`;
+            const remMins = diffMins % 60;
+            if (diffHours < 24) return remMins > 0 ? `${diffHours}h ${remMins}m from now` : `${diffHours}h from now`;
             const diffDays = Math.floor(diffHours / 24);
             return `${diffDays}d from now`;
         }
