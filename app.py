@@ -111,24 +111,16 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["WTF_CSRF_TIME_LIMIT"] = None  # CSRF tokens valid for the session lifetime
 
-# CSRF protection: Socket.IO polling uses POST requests internally. These
-# are already protected by the CORS origin check, so we exempt them by
-# subclassing CSRFProtect to skip validation on the /socket.io path.
-class _CSRFProtectWithExemptions(CSRFProtect):
-    def protect(self):
-        if request.path.startswith("/socket.io"):
-            return
-        return super().protect()
-
-csrf = _CSRFProtectWithExemptions(app)
+csrf = CSRFProtect(app)
 
 def _cors_allowed_origin(origin: str) -> bool:
     """Allow SocketIO connections only from the same host that served the page.
     Tailscale Serve sets the Host header to the canonical tailnet hostname, so
     this locks WebSocket upgrades to that exact origin without needing a
-    hardcoded env var. Falls back to permissive if Host is unavailable."""
+    hardcoded env var. Same-origin requests (no Origin header) are allowed;
+    cross-origin requests must match the Host."""
     if not origin:
-        return False
+        return True  # same-origin requests omit the Origin header
     host = request.headers.get("Host", "")
     if not host:
         return False
