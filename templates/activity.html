@@ -9,6 +9,7 @@
         {{ total_entries }} total event{% if total_entries != 1 %}s{% endif %}
         {% if retention_days > 0 %}&nbsp;&middot;&nbsp;retained {{ retention_days }} days{% else %}&nbsp;&middot;&nbsp;retained indefinitely{% endif %}
         &nbsp;&middot;&nbsp;times in your local timezone
+        &nbsp;<span title="Activity is logged once per session. A new session starts when you first visit after clearing cookies or after your session expires. Browsing the app within an existing session is not logged here; specific actions (approvals, requests, revocations) are tracked in the Audit Log." style="display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border:1px solid #aaa; border-radius:50%; font-size:11px; color:#888; cursor:help; vertical-align:middle;">i</span>
     </span>
 </div>
 
