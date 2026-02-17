@@ -9,9 +9,19 @@
         {{ total_entries }} total event{% if total_entries != 1 %}s{% endif %}
         {% if retention_days > 0 %}&nbsp;&middot;&nbsp;retained {{ retention_days }} days{% else %}&nbsp;&middot;&nbsp;retained indefinitely{% endif %}
         &nbsp;&middot;&nbsp;times in your local timezone
-        &nbsp;<span title="Activity is logged once per session. A new session starts when you first visit after clearing cookies or after your session expires. Browsing the app within an existing session is not logged here; specific actions (approvals, requests, revocations) are tracked in the Audit Log." style="display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border:1px solid #aaa; border-radius:50%; font-size:11px; color:#888; cursor:help; vertical-align:middle;">i</span>
+        <span class="info-tip" style="position:relative; display:inline-flex; align-items:center; margin-left:4px;">
+            <span class="info-icon" tabindex="0" style="display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; border-radius:50%; border:1px solid #bbb; color:#bbb; font-size:10px; font-style:normal; font-weight:700; line-height:1; cursor:default; user-select:none;">i</span>
+            <span class="info-bubble" style="display:none; position:absolute; right:0; top:20px; width:260px; background:#333; color:#fff; font-size:12px; line-height:1.5; padding:10px 12px; border-radius:6px; z-index:100; white-space:normal; font-weight:400; box-shadow:0 2px 8px rgba(0,0,0,.25);">
+                Activity is logged once per session. A new session starts when you first visit after clearing cookies or after your session expires. Browsing within an existing session is not logged here. Specific actions (approvals, requests, revocations) are tracked in the <strong style="color:#fff;">Audit Log</strong>.
+            </span>
+        </span>
     </span>
 </div>
+<style>
+.info-tip:hover .info-bubble,
+.info-tip:focus-within .info-bubble { display:block !important; }
+.info-icon:hover, .info-icon:focus { border-color:#888; color:#888; outline:none; }
+</style>
 
 {# Search bar #}
 <form method="get" action="/activity" style="display:flex; gap:8px; margin-bottom:16px;">
