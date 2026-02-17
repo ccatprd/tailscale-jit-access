@@ -144,7 +144,7 @@
         {
             id: {{ device.id | tojson }},
             name: {{ device.hostname | tojson }},
-            label: {{ device.hostname | tojson }}{% if device.user or device.tags %} + ' (' + {{ (device.user if device.user else device.tags[0] if device.tags else '') | tojson }} + ')'{% endif %},
+            label: {{ device.hostname | tojson }}{% if device.user or device.tags %} + ' (' + {{ (device.user if device.user else device.tags | join(', ') if device.tags else '') | tojson }} + ')'{% endif %},
             search: {{ (device.hostname + ' ' + (device.user or '') + ' ' + (device.tags | join(' '))) | lower | tojson }}
         }{% if not loop.last %},{% endif %}
         {% endfor %}
@@ -285,7 +285,7 @@
                 // Rebuild the devices array and re-init the combo
                 window._jitDevices.length = 0;
                 data.devices.forEach(d => {
-                    const suffix = d.user || (d.tags && d.tags[0]) || '';
+                    const suffix = d.user || (d.tags && d.tags.length ? d.tags.join(', ') : '') || '';
                     window._jitDevices.push({
                         id: d.id,
                         name: d.hostname,
