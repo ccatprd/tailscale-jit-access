@@ -143,6 +143,15 @@
 
 {% block scripts %}
 <script>
+// Collect request IDs that have been manually revoked so we can mark them correctly
+const revokedIds = new Set();
+document.querySelectorAll('.audit-status').forEach(cell => {
+    if (cell.dataset.event === 'access_revoked') {
+        const rm = cell.dataset.details.match(/Request #(\d+)/);
+        if (rm) revokedIds.add(rm[1]);
+    }
+});
+
 document.querySelectorAll('.audit-status').forEach(cell => {
     const ev = cell.dataset.event;
     const details = cell.dataset.details;
@@ -150,9 +159,19 @@ document.querySelectorAll('.audit-status').forEach(cell => {
         // No badge - grayed-out row is sufficient
         return;
     }
+    if (ev === 'access_revoked') {
+        cell.innerHTML = '<span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:12px;font-weight:600;background:#ffebee;color:#b71c1c;">Revoked</span>';
+        return;
+    }
     if (ev !== 'access_request_approved') return;
     const m = details.match(/expires at ([\d\-T:+\.Z ]+)/);
     if (!m) return;
+    const reqId = details.match(/Request #(\d+)/);
+    // If this request was manually revoked, show Revoked instead of Active
+    if (reqId && revokedIds.has(reqId[1])) {
+        cell.innerHTML = '<span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:12px;font-weight:600;background:#ffebee;color:#b71c1c;">Revoked</span>';
+        return;
+    }
     const expiry = parseUTC(m[1].trim());
     if (!expiry) return;
     const active = expiry > new Date();
