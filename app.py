@@ -113,22 +113,11 @@ app.config["WTF_CSRF_TIME_LIMIT"] = None  # CSRF tokens valid for the session li
 
 csrf = CSRFProtect(app)
 
-def _cors_allowed_origin(origin: str) -> bool:
-    """Allow SocketIO connections only from the same host that served the page.
-    Tailscale Serve sets the Host header to the canonical tailnet hostname, so
-    this locks WebSocket upgrades to that exact origin without needing a
-    hardcoded env var. Same-origin requests (no Origin header) are allowed;
-    cross-origin requests must match the Host."""
-    if not origin:
-        return True  # same-origin requests omit the Origin header
-    host = request.headers.get("Host", "")
-    if not host:
-        return False
-    allowed = {f"https://{host}", f"http://{host}"}
-    return origin in allowed
-
-
-socketio = SocketIO(app, cors_allowed_origins=_cors_allowed_origin)
+# SocketIO CORS: use engine.io's built-in same-origin validation (default).
+# It checks the Origin header against the Host from the WSGI environ,
+# which works correctly behind Tailscale Serve without needing Flask's
+# request context.
+socketio = SocketIO(app)
 
 
 @app.after_request
