@@ -93,15 +93,19 @@ function updateCountdowns() {
         const now = new Date();
         const then = parseUTC(expiry);
         const diffMins = Math.floor((then - now) / 60000);
+        let color, weight;
         if (diffMins < 0) {
-            cell.innerHTML = '<span style="color:#8e8e93;">expired</span>';
+            color = '#8e8e93'; weight = '400';
         } else if (diffMins < 15) {
-            cell.innerHTML = `<span style="color:#ff3b30;font-weight:600;">${timeAgo(expiry)}</span>`;
+            color = '#ff3b30'; weight = '600';
         } else if (diffMins < 60) {
-            cell.innerHTML = `<span style="color:#ff9500;font-weight:500;">${timeAgo(expiry)}</span>`;
+            color = '#ff9500'; weight = '500';
         } else {
-            cell.innerHTML = `<span style="color:#34c759;">${timeAgo(expiry)}</span>`;
+            color = '#34c759'; weight = '400';
         }
+        cell.textContent = diffMins < 0 ? 'expired' : timeAgo(expiry);
+        cell.style.color = color;
+        cell.style.fontWeight = weight;
     });
 }
 

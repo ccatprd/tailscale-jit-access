@@ -270,7 +270,9 @@
 
     <nav>
         <a href="/" {% if request.path == '/' %}class="active"{% endif %}>Home</a>
+        {% if can_request_access %}
         <a href="/request" {% if request.path == '/request' %}class="active"{% endif %}>Request Access</a>
+        {% endif %}
         {% if can_view_current_access %}
         <a href="/current-access" {% if request.path == '/current-access' %}class="active"{% endif %}>Current Access</a>
         {% endif %}

@@ -20,7 +20,7 @@ from functools import wraps
 
 import requests as http_requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, Response, jsonify, redirect, render_template, request, session, url_for
 from flask_socketio import SocketIO
 from flask_wtf.csrf import CSRFProtect
 
@@ -318,8 +318,8 @@ def init_db():
                 n = max(1, min(3, int(rule.get("required_approvals", 1))))
                 c.execute(
                     """INSERT INTO approval_rules (profile, required_approvals, updated_by, updated_at)
-                       VALUES (?, ?, 'config.py', CURRENT_TIMESTAMP)""",
-                    (profile_id, n),
+                       VALUES (?, ?, 'config.py', ?)""",
+                    (profile_id, n, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")),
                 )
                 for entry in rule.get("authorized_approvers", []):
                     email = str(entry.get("email", "")).strip().lower()
@@ -472,6 +472,11 @@ def _safe_int(value, default=None):
         return default
 
 
+def _escape_like(s):
+    """Escape special LIKE characters so they match literally."""
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def _validate_request_fields(device_id, device_name, profile, duration, reason):
     """Validate access request fields. Returns error message or None."""
     if not all([device_id, device_name, profile, reason]):
@@ -531,6 +536,7 @@ def inject_globals():
     """Make permissions and version available in all templates."""
     return {
         "app_version": __version__,
+        "can_request_access": has_permission("can_request_access"),
         "can_admin_config": has_permission("can_admin_config"),
     }
 
@@ -544,10 +550,12 @@ def login():
     user = request.headers.get("Tailscale-User-Login")
 
     if user:
+        # track_session() (before_request) already handles session creation
+        # and login logging for new sessions. Only update the session user here
+        # in case they navigated to /login explicitly with an existing session.
         session["user"] = user
-        session["session_id"] = os.urandom(16).hex()
-        log_user_activity("login")
-        log_audit("user_login", details=f"User {user} logged in via Tailscale")
+        if not session.get("session_id"):
+            session["session_id"] = os.urandom(16).hex()
         return redirect(url_for("index"))
 
     return (
@@ -627,6 +635,7 @@ def index():
 
             # Active grants: approved requests whose expiry hasn't passed yet
             now = datetime.now(timezone.utc)
+            active_ids = set()
             for row in my_recent:
                 if row["status"] != "approved" or not row["processed_at"]:
                     continue
@@ -638,10 +647,15 @@ def index():
                     continue
                 expires_at = processed_at + timedelta(minutes=int(row["duration"]))
                 if expires_at > now:
+                    active_ids.add(row["id"])
                     my_active.append({
                         **row,
                         "expires_at": expires_at.isoformat(),
                     })
+
+            # Don't show active grants again in the Recent section
+            if active_ids:
+                my_recent = [r for r in my_recent if r["id"] not in active_ids]
 
     return render_template(
         "index.html",
@@ -798,8 +812,8 @@ def audit():
     q = request.args.get("q", "").strip()
 
     if q:
-        like = f"%{q}%"
-        where = """WHERE (event_type LIKE ? OR user LIKE ? OR target LIKE ? OR details LIKE ? OR ip_address LIKE ?)"""
+        like = f"%{_escape_like(q)}%"
+        where = r"""WHERE (event_type LIKE ? ESCAPE '\' OR user LIKE ? ESCAPE '\' OR target LIKE ? ESCAPE '\' OR details LIKE ? ESCAPE '\' OR ip_address LIKE ? ESCAPE '\')"""
         params_count = (like, like, like, like, like)
         params_rows = (like, like, like, like, like, per_page, (page - 1) * per_page)
         with get_db() as conn:
@@ -873,8 +887,8 @@ def activity():
     q = request.args.get("q", "").strip()
 
     if q:
-        like = f"%{q}%"
-        where = "WHERE (user LIKE ? OR action LIKE ? OR ip_address LIKE ? OR user_agent LIKE ? OR session_id LIKE ?)"
+        like = f"%{_escape_like(q)}%"
+        where = r"WHERE (user LIKE ? ESCAPE '\' OR action LIKE ? ESCAPE '\' OR ip_address LIKE ? ESCAPE '\' OR user_agent LIKE ? ESCAPE '\' OR session_id LIKE ? ESCAPE '\')"
         params_count = (like, like, like, like, like)
         params_rows = (like, like, like, like, like, per_page, (page - 1) * per_page)
         with get_db() as conn:
@@ -949,15 +963,16 @@ def admin_config():
             if n is None or n < 1 or n > 3:
                 errors.append(f"{profile_obj['name']}: required approvals must be 1-3")
             else:
+                now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                 with get_db() as conn:
                     conn.execute(
                         """INSERT INTO approval_rules (profile, required_approvals, updated_by, updated_at)
-                           VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                           VALUES (?, ?, ?, ?)
                            ON CONFLICT(profile) DO UPDATE SET
                              required_approvals = excluded.required_approvals,
                              updated_by = excluded.updated_by,
                              updated_at = excluded.updated_at""",
-                        (pid, n, user),
+                        (pid, n, user, now_str),
                     )
                 log_audit("approval_rule_updated", target=pid,
                           details=f"Required approvals set to {n} by {user}")
@@ -1058,7 +1073,7 @@ def export_config():
         if approvers:
             lines.append('        "authorized_approvers": [')
             for a in approvers:
-                lines.append(f'            {{"email": {json.dumps(a["approver"])}, "required": {str(a["is_required"])}}},')
+                lines.append(f'            {{"email": {json.dumps(a["approver"])}, "required": {"True" if a["is_required"] else "False"}}},')
             lines.append('        ],')
         else:
             lines.append('        "authorized_approvers": [],')
@@ -1066,7 +1081,6 @@ def export_config():
     lines.append("}")
 
     snippet = "\n".join(lines)
-    from flask import Response
     return Response(snippet, mimetype="text/plain",
                     headers={"Content-Disposition": "attachment; filename=config_export.py"})
 
@@ -1088,7 +1102,7 @@ def debug():
         "session_id": session.get("session_id", "Not set"),
         "remote_addr": get_client_ip(),
         "user_agent": request.headers.get("User-Agent"),
-        "tailscale_user_header": request.headers.get("Tailscale-User"),
+        "tailscale_user_header": request.headers.get("Tailscale-User-Login"),
         "capabilities_header": request.headers.get("Tailscale-App-Capabilities"),
         "parsed_capabilities": caps,
         "cap_domain": CAP_DOMAIN,
@@ -1231,7 +1245,7 @@ def approve_request(request_id):
                           details=f"Not an authorized approver for profile {profile}")
                 return jsonify({"error": "You are not an authorized approver for this profile"}), 403
 
-        # Record the vote
+        # Record the vote, check quorum, and update status atomically
         conn.execute(
             "INSERT INTO approval_votes (request_id, voter) VALUES (?, ?)",
             (request_id, user),
@@ -1239,24 +1253,23 @@ def approve_request(request_id):
 
         vote_count = get_vote_count(conn, request_id)
         voters = get_voters(conn, request_id)
+        missing_required = [e for e in required_emails if e not in voters]
+        quorum_met = vote_count >= required and not missing_required
 
+        if not quorum_met:
+            conn.execute(
+                "UPDATE access_requests SET status = 'partially_approved' WHERE id = ? AND status = 'pending'",
+                (request_id,),
+            )
 
-    # Determine whether all required approvers have voted
-    missing_required = [e for e in required_emails if e not in voters]
-
+    # DB connection is now committed. Handle the two outcomes.
     log_audit(
         "access_request_vote",
         target=device_name,
         details=f"Request #{request_id}: vote {vote_count}/{required} by {user}",
     )
 
-    if vote_count < required or missing_required:
-        # Either general quorum not reached, or a required approver hasn't voted yet
-        with get_db() as conn:
-            conn.execute(
-                "UPDATE access_requests SET status = 'partially_approved' WHERE id = ? AND status = 'pending'",
-                (request_id,),
-            )
+    if not quorum_met:
         socketio.emit("request_vote", {
             "id": request_id,
             "voter": user,
