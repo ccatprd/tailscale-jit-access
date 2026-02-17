@@ -176,6 +176,8 @@
                 <span style="font-size:11px; font-weight:600; background:#e8f5e9; color:#1b5e20; border-radius:20px; padding:2px 10px; white-space:nowrap;">Approved</span>
                 {% elif req.status == 'expired' %}
                 <span style="font-size:11px; font-weight:600; background:#fff3e0; color:#e65100; border-radius:20px; padding:2px 10px; white-space:nowrap;">Expired</span>
+                {% elif req.status == 'revoked' %}
+                <span style="font-size:11px; font-weight:600; background:#ffebee; color:#b71c1c; border-radius:20px; padding:2px 10px; white-space:nowrap;">Revoked</span>
                 {% else %}
                 <span style="font-size:11px; font-weight:600; background:#ffebee; color:#b71c1c; border-radius:20px; padding:2px 10px; white-space:nowrap;">Denied</span>
                 {% endif %}
@@ -183,7 +185,7 @@
                 <code style="font-size:11px; color:#888;">{{ req.profile }}</code>
                 <span style="font-size:12px; color:#aaa; margin-left:auto; white-space:nowrap;">{{ req.duration }} min &middot; <span class="ts" data-raw="{{ req.processed_at }}">{{ req.processed_at }}</span></span>
             </div>
-            {% if req.status == 'denied' and req.denial_reason %}
+            {% if (req.status == 'denied' or req.status == 'revoked') and req.denial_reason %}
             <div style="margin-top:8px; font-size:12px; color:#c62828; padding-left:2px;">
                 Reason: {{ req.denial_reason }}
             </div>

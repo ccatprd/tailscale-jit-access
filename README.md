@@ -5,14 +5,14 @@ A self-hosted web application for managing temporary access grants using Tailsca
 ## How It Works
 
 ```
-User requests access  →  Approver reviews  →  Posture attribute set  →  ACL grants access  →  Auto-expires
+User requests access  →  Approver reviews  →  Posture attribute set  →  ACL grants access  →  Auto-expires or manual revoke
 ```
 
 1. **Request**: User selects which of their devices needs access and what access level is required, for a defined duration
 2. **Approve**: Authorized approver reviews and approves/denies the request
 3. **Grant**: App sets a posture attribute on the requesting device via the Tailscale API, unlocking the ACL rules that gate the target resource
 4. **Access**: The requesting device now matches ACL rules requiring that posture attribute
-5. **Expire**: A background worker monitors all approved grants and calls the Tailscale API to delete the posture attribute when the duration elapses, marking the request as `expired` in the audit log
+5. **Expire or Revoke**: A background worker monitors all approved grants and calls the Tailscale API to delete the posture attribute when the duration elapses, marking the request as `expired` in the audit log. Approvers can also manually revoke any active grant at any time from the Current Access page.
 
 ## Features
 
@@ -20,6 +20,7 @@ User requests access  →  Approver reviews  →  Posture attribute set  →  AC
 - **Multi-approval workflows**: require N approvers before access is granted, configurable per profile
 - **Real-time notifications** via WebSocket when requests are submitted, voted on, or approved
 - **Automatic expiry**: background worker revokes grants via the Tailscale API when the duration elapses; no manual cleanup needed
+- **Manual revocation**: approvers can revoke any active access grant on demand from the Current Access dashboard, with a required reason logged for audit
 - **Comprehensive audit logging** of all requests, votes, approvals, denials, expirations, and permission rejections with full pagination and configurable retention
 - **Real-time dashboard** showing currently active access grants with countdown timers
 - **Granular permissions** controlling who can request, approve, and view access
@@ -351,7 +352,7 @@ The `--accept-app-caps` flag is what passes permissions from the ACL into the `T
 | Permission | Description |
 |-----------|-------------|
 | `can_request_access` | Submit access requests |
-| `can_approve_requests` | Approve or deny pending requests, cast approval votes |
+| `can_approve_requests` | Approve or deny pending requests, cast approval votes, revoke active access |
 | `can_view_current_access` | View active access grants dashboard |
 | `can_view_audit` | View audit logs and user activity |
 | `can_view_debug` | View debug information and Tailscale headers |
@@ -445,6 +446,7 @@ docker compose logs -f
 | `/api/request` | POST | Submit access request (JSON) |
 | `/api/approve/<id>` | POST | Approve a pending request |
 | `/api/deny/<id>` | POST | Deny a pending request (JSON body with `reason`) |
+| `/api/revoke/<id>` | POST | Revoke an active access grant (JSON body with `reason`) |
 | `/healthz` | GET | Health check (no auth required) |
 
 ## Security Considerations
@@ -452,7 +454,7 @@ docker compose logs -f
 - **No passwords stored**: Authentication is entirely via Tailscale headers
 - **ACL-enforced permissions**: All authorization comes from Tailscale ACL grants
 - **Audit everything**: Every action logged with user, timestamp, and IP
-- **Automatic expiry**: Background worker actively revokes posture attributes when grants expire; no manual cleanup needed even if the Tailscale attribute TTL is not set
+- **Automatic expiry + manual revoke**: Background worker actively revokes posture attributes when grants expire. Approvers can also revoke any active grant immediately from the Current Access page, removing the posture attribute on the spot.
 - **HTTPS only**: Tailscale Serve provides automatic TLS certificates
 - **Input validation**: All request fields validated with strict regex patterns
 - **Self-approval prevention**: On by default (`ALLOW_SELF_APPROVE=false`); requesters cannot approve their own requests

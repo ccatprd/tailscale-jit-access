@@ -560,6 +560,13 @@
                 setTimeout(() => window.location.reload(), 2000);
             }
         });
+
+        socket.on('request_revoked', function(data) {
+            showNotification(`Request #${data.id} access revoked by ${data.revoker}`);
+            if (window.location.pathname === '/' || window.location.pathname === '/current-access') {
+                setTimeout(() => window.location.reload(), 2000);
+            }
+        });
     </script>
 
     <div style="position: fixed; bottom: 10px; right: 10px; font-size: 11px; color: #999; background: rgba(255,255,255,0.9); padding: 5px 10px; border-radius: 4px;">

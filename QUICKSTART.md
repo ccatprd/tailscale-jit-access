@@ -143,10 +143,11 @@ You should see the JIT Access Management interface!
 
 1. **Verify identity injection**: Go to Debug tab, check that `Tailscale-App-Capabilities` contains your permission JSON
 2. **Test it**: Submit an access request (pick one of your devices and an access level), then approve it
-3. **Add users**: Update ACL to grant `can_request_access` to other users
-4. **Configure access profiles**: Set the `ACCESS_PROFILES` environment variable (see `.env.example`)
-5. **Add posture checks**: Update ACL to use posture attributes for resource access
-6. **Set up backups**: Add a cron job to run `sqlite3 /opt/tailscale-jit-access/jit_access.db ".backup 'backup-$(date +%Y%m%d).db'"`
+3. **Test revocation**: After approving a request, go to Current Access and revoke it to verify the posture attribute is removed
+4. **Add users**: Update ACL to grant `can_request_access` to other users
+5. **Configure access profiles**: Set the `ACCESS_PROFILES` environment variable (see `.env.example`)
+6. **Add posture checks**: Update ACL to use posture attributes for resource access
+7. **Set up backups**: Add a cron job to run `sqlite3 /opt/tailscale-jit-access/jit_access.db ".backup 'backup-$(date +%Y%m%d).db'"`
 
 ## Troubleshooting
 

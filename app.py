@@ -605,7 +605,7 @@ def index():
                           approver, denial_reason, created_at, processed_at
                    FROM access_requests
                    WHERE requester = ?
-                   AND status IN ('approved', 'denied', 'expired')
+                   AND status IN ('approved', 'denied', 'expired', 'revoked')
                    ORDER BY processed_at DESC
                    LIMIT 10""",
                 (user,),
@@ -716,7 +716,7 @@ def current_access():
 
     with get_db() as conn:
         rows = conn.execute(
-            """SELECT requester, device_name, profile, approver, processed_at, duration
+            """SELECT id, requester, device_id, device_name, profile, approver, processed_at, duration
                FROM access_requests
                WHERE status = 'approved'
                ORDER BY processed_at DESC"""
@@ -736,7 +736,9 @@ def current_access():
 
         if expires_at > now:
             active_grants.append({
+                "id": row["id"],
                 "requester": row["requester"],
+                "device_id": row["device_id"],
                 "device_name": row["device_name"],
                 "profile": row["profile"],
                 "approver": row["approver"],
@@ -749,6 +751,7 @@ def current_access():
         "current-access.html",
         active_grants=active_grants,
         current_user=user,
+        can_approve=has_permission("can_approve_requests"),
         can_view_audit=can_view_audit,
         can_view_current_access=can_view_current_access,
         can_view_debug=has_permission("can_view_debug"),
@@ -1375,6 +1378,97 @@ def deny_request(request_id):
     logger.info("Request #%d denied by %s: %s", request_id, user, reason)
 
     return jsonify({"status": "denied"})
+
+
+@app.route("/api/revoke/<int:request_id>", methods=["POST"])
+@login_required
+def revoke_access(request_id):
+    """Revoke an active access grant, removing the posture attribute immediately."""
+    if not has_permission("can_approve_requests"):
+        log_audit("permission_denied", target=f"/api/revoke/{request_id}",
+                  details="Missing can_approve_requests")
+        return jsonify({"error": "Permission denied"}), 403
+
+    user = get_current_user()
+    data = request.json or {}
+    reason = str(data.get("reason", "")).strip()
+
+    if not reason:
+        return jsonify({"error": "Revocation reason is required"}), 400
+
+    if len(reason) > 1000:
+        return jsonify({"error": "Revocation reason too long"}), 400
+
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT device_id, device_name, profile, duration, status, processed_at, requester "
+            "FROM access_requests WHERE id = ?",
+            (request_id,),
+        ).fetchone()
+
+        if not row:
+            return jsonify({"error": "Request not found"}), 404
+
+        if row["status"] != "approved":
+            return jsonify({"error": f"Request is not active (status: {row['status']})"}), 409
+
+        # Verify the grant hasn't already expired naturally
+        if row["processed_at"]:
+            try:
+                processed_at = datetime.fromisoformat(row["processed_at"].replace("Z", "+00:00"))
+                if processed_at.tzinfo is None:
+                    processed_at = processed_at.replace(tzinfo=timezone.utc)
+                expires_at = processed_at + timedelta(minutes=int(row["duration"]))
+                if expires_at <= datetime.now(timezone.utc):
+                    return jsonify({"error": "Grant has already expired"}), 409
+            except (ValueError, AttributeError):
+                pass
+
+        device_id = row["device_id"]
+        device_name = row["device_name"]
+        profile = row["profile"]
+
+    # Delete the posture attribute via Tailscale API
+    token = get_tailscale_token()
+    if not token:
+        return jsonify({"error": "Failed to get Tailscale access token"}), 500
+
+    api_url = f"https://api.tailscale.com/api/v2/device/{device_id}/attributes/{profile}"
+    headers_ts = {"Authorization": f"Bearer {token}"}
+
+    try:
+        resp = http_requests.delete(api_url, headers=headers_ts, timeout=15)
+    except http_requests.RequestException as exc:
+        logger.error("Revoke API call failed for request #%d: %s", request_id, exc)
+        return jsonify({"error": "Failed to communicate with Tailscale API"}), 502
+
+    if resp.status_code not in (200, 204, 404):
+        logger.error("Revoke API error %d for request #%d: %s",
+                     resp.status_code, request_id, resp.text)
+        return jsonify({"error": f"Tailscale API error: {resp.text}"}), 500
+
+    # Update DB - WHERE guards against race with background worker
+    with get_db() as conn:
+        cursor = conn.execute(
+            """UPDATE access_requests
+               SET status = 'revoked', denial_reason = ?
+               WHERE id = ? AND status = 'approved'""",
+            (f"Revoked by {user}: {reason}", request_id),
+        )
+        if cursor.rowcount == 0:
+            return jsonify({"error": "Request was already processed"}), 409
+
+    log_audit(
+        "access_revoked",
+        target=device_name,
+        details=f"Request #{request_id}: {profile} revoked by {user}: {reason}",
+    )
+
+    socketio.emit("request_revoked", {"id": request_id, "revoker": user})
+
+    logger.info("Request #%d revoked by %s: %s", request_id, user, reason)
+
+    return jsonify({"status": "revoked"})
 
 
 # ---------------------------------------------------------------------------
