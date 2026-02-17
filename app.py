@@ -111,7 +111,16 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["WTF_CSRF_TIME_LIMIT"] = None  # CSRF tokens valid for the session lifetime
 
-csrf = CSRFProtect(app)
+# CSRF protection: Socket.IO polling uses POST requests internally. These
+# are already protected by the CORS origin check, so we exempt them by
+# subclassing CSRFProtect to skip validation on the /socket.io path.
+class _CSRFProtectWithExemptions(CSRFProtect):
+    def protect(self):
+        if request.path.startswith("/socket.io"):
+            return
+        return super().protect()
+
+csrf = _CSRFProtectWithExemptions(app)
 
 def _cors_allowed_origin(origin: str) -> bool:
     """Allow SocketIO connections only from the same host that served the page.
