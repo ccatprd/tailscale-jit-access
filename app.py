@@ -22,6 +22,7 @@ import requests as http_requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from flask_socketio import SocketIO
+from flask_wtf.csrf import CSRFProtect
 
 # ---------------------------------------------------------------------------
 # Version
@@ -105,6 +106,12 @@ logger = logging.getLogger("jit-access")
 # ---------------------------------------------------------------------------
 app = Flask(__name__)
 app.config["SECRET_KEY"] = FLASK_SECRET_KEY
+app.config["SESSION_COOKIE_SECURE"] = True
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["WTF_CSRF_TIME_LIMIT"] = None  # CSRF tokens valid for the session lifetime
+
+csrf = CSRFProtect(app)
 
 def _cors_allowed_origin(origin: str) -> bool:
     """Allow SocketIO connections only from the same host that served the page.
@@ -115,13 +122,22 @@ def _cors_allowed_origin(origin: str) -> bool:
         return False
     host = request.headers.get("Host", "")
     if not host:
-        # No Host header - running without a reverse proxy (dev mode)
-        return True
+        return False
     allowed = {f"https://{host}", f"http://{host}"}
     return origin in allowed
 
 
 socketio = SocketIO(app, cors_allowed_origins=_cors_allowed_origin)
+
+
+@app.after_request
+def set_security_headers(response):
+    """Add standard security headers to every response."""
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
 
 # ---------------------------------------------------------------------------
 # Caching
@@ -344,8 +360,15 @@ def get_user_capabilities():
 
 
 def get_client_ip():
-    """Get real client IP: X-Forwarded-For if available, else remote_addr."""
-    return request.headers.get("X-Forwarded-For") or request.remote_addr
+    """Get real client IP from X-Forwarded-For when behind Tailscale Serve.
+    Only trust the header when the direct connection is from localhost (the
+    reverse proxy), preventing spoofed IPs from external clients."""
+    remote = request.remote_addr or ""
+    if remote.startswith("127.") or remote == "::1":
+        forwarded = request.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return remote
 
 
 def get_current_user():
@@ -1087,8 +1110,6 @@ def debug():
             "can_view_debug": can_view_debug,
             "can_admin_config": has_permission("can_admin_config"),
         },
-        "all_headers": dict(request.headers),
-        "session_data": dict(session),
     }
 
     return render_template(
@@ -1294,7 +1315,7 @@ def approve_request(request_id):
 
     if api_response.status_code not in (200, 201, 204):
         logger.error("Tailscale API error %d: %s", api_response.status_code, api_response.text)
-        return jsonify({"error": f"Tailscale API error: {api_response.text}"}), 500
+        return jsonify({"error": "Tailscale API request failed"}), 500
 
     # Update DB: WHERE guards against TOCTOU race between final voters
     with get_db() as conn:
@@ -1445,7 +1466,7 @@ def revoke_access(request_id):
     if resp.status_code not in (200, 204, 404):
         logger.error("Revoke API error %d for request #%d: %s",
                      resp.status_code, request_id, resp.text)
-        return jsonify({"error": f"Tailscale API error: {resp.text}"}), 500
+        return jsonify({"error": "Tailscale API request failed"}), 500
 
     # Update DB - WHERE guards against race with background worker
     with get_db() as conn:

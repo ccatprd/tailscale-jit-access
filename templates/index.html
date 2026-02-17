@@ -253,7 +253,7 @@ async function approveRequest(id, btn) {
     btn.textContent = 'Approving...';
 
     try {
-        const response = await fetch(`/api/approve/${id}`, { method: 'POST' });
+        const response = await fetch(`/api/approve/${id}`, { method: 'POST', headers: { 'X-CSRFToken': _csrfToken } });
         const data = await response.json().catch(() => ({}));
 
         if (response.ok) {
@@ -272,15 +272,28 @@ async function approveRequest(id, btn) {
                 if (voteCell) {
                     const quorumMet = data.vote_count >= data.required;
                     const color = quorumMet ? '#27ae60' : '#e67e22';
-                    let voterBadges = data.voters.map(v =>
-                        `<span title="${v}" style="display:inline-block;background:#e8f5e9;color:#2e7d32;border-radius:3px;padding:1px 5px;margin:1px;font-size:11px;">${v.split('@')[0]}</span>`
-                    ).join('');
-                    let missingHtml = '';
+                    // Build voter badges safely using DOM methods
+                    voteCell.textContent = '';
+                    const countDiv = document.createElement('div');
+                    countDiv.style.cssText = `font-size:13px;font-weight:600;color:${color};`;
+                    countDiv.textContent = `${data.vote_count}/${data.required}`;
+                    voteCell.appendChild(countDiv);
+                    const badgesDiv = document.createElement('div');
+                    badgesDiv.style.cssText = 'font-size:11px;color:#888;margin-top:2px;';
+                    data.voters.forEach(v => {
+                        const badge = document.createElement('span');
+                        badge.title = v;
+                        badge.style.cssText = 'display:inline-block;background:#e8f5e9;color:#2e7d32;border-radius:3px;padding:1px 5px;margin:1px;font-size:11px;';
+                        badge.textContent = v.split('@')[0];
+                        badgesDiv.appendChild(badge);
+                    });
+                    voteCell.appendChild(badgesDiv);
                     if (quorumMet && data.missing_required && data.missing_required.length > 0) {
-                        const names = data.missing_required.join(', ');
-                        missingHtml = `<div style="margin-top:3px;font-size:11px;color:#c62828;">&#9733; Waiting on: ${names}</div>`;
+                        const missingDiv = document.createElement('div');
+                        missingDiv.style.cssText = 'margin-top:3px;font-size:11px;color:#c62828;';
+                        missingDiv.textContent = '\u2733 Waiting on: ' + data.missing_required.join(', ');
+                        voteCell.appendChild(missingDiv);
                     }
-                    voteCell.innerHTML = `<div style="font-size:13px;font-weight:600;color:${color};">${data.vote_count}/${data.required}</div><div style="font-size:11px;color:#888;margin-top:2px;">${voterBadges}</div>${missingHtml}`;
                 }
                 btn.textContent = 'Approved';
                 btn.style.opacity = '0.45';
@@ -314,7 +327,7 @@ async function submitDeny() {
     try {
         const response = await fetch(`/api/deny/${id}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrfToken },
             body: JSON.stringify({ reason })
         });
         const data = await response.json().catch(() => ({}));
@@ -343,9 +356,11 @@ function showInlineError(id, msg) {
     const cols = row.querySelectorAll('td').length;
     const errRow = document.createElement('tr');
     errRow.id = `err-${id}`;
-    errRow.innerHTML = `<td colspan="${cols}" style="background:#fff3cd; color:#856404; padding:10px 16px; font-size:13px; border-bottom:1px solid #ffc107;">
-        ${msg}
-    </td>`;
+    const td = document.createElement('td');
+    td.colSpan = cols;
+    td.style.cssText = 'background:#fff3cd; color:#856404; padding:10px 16px; font-size:13px; border-bottom:1px solid #ffc107;';
+    td.textContent = msg;
+    errRow.appendChild(td);
     row.insertAdjacentElement('afterend', errRow);
 }
 </script>

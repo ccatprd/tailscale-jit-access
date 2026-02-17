@@ -26,6 +26,7 @@
 <div id="profileNoResults" style="display:none; color:#888; font-size:13px; margin-bottom:16px;">No profiles match.</div>
 
 <form method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 {% for profile in profiles %}
 {% set safe_id = profile.id.replace(':', '_').replace('-', '_') %}
 {% set rule = rules.get(profile.id) %}

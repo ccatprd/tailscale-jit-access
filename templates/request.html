@@ -6,6 +6,7 @@
 <h2>Request Temporary Access</h2>
 
 <form method="POST" id="requestForm" style="margin-bottom: 40px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-group">
         <label for="device_combo">Which of your devices needs access? *
             <a href="#" id="deviceRefresh" style="font-size: 12px; margin-left: 10px; font-weight: 400;">Update</a>
